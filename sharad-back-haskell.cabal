@@ -28,6 +28,8 @@ source-repository head
 library
   exposed-modules:
       Lib
+      , Model
+      , NoteService
   other-modules:
       Paths_sharad_back_haskell
   hs-source-dirs:
@@ -36,6 +38,13 @@ library
       base >=4.7 && <5
       , happstack-server
       , bytestring
+      , aeson
+      , uuid
+      , SHA
+      , base64
+      , binary
+      , text
+      , directory
   default-language: Haskell2010
 
 executable sharad-back-haskell-exe
