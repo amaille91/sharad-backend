@@ -45,6 +45,7 @@ library
       , binary
       , text
       , directory
+      , transformers
   default-language: Haskell2010
 
 executable sharad-back-haskell-exe

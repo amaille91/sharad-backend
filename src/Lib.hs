@@ -6,6 +6,7 @@ module Lib
 
 import Control.Monad (msum, mzero)
 import Control.Monad.IO.Class (liftIO)
+import Data.Either (either)
 import Control.Concurrent.MVar (takeMVar)
 import qualified Data.ByteString.Lazy.Char8 as BL (unpack)
 import Data.Aeson (decode, encode)
@@ -32,7 +33,11 @@ noteController = do
              ]
 
 getNote :: ServerPartT IO Response
-getNote = mzero
+getNote = do
+    nullDir
+    method GET
+    notes <- liftIO NoteService.getAllNotes
+    either (\_ -> internalServerError (toResponse "Unexpected problem during retrieving all notes")) (ok . toResponse . encode) notes
 
 postNote :: ServerPartT IO Response
 postNote = do
@@ -45,10 +50,13 @@ postNote = do
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
             let noteContent :: Maybe NoteContent = decode $ unBody rqBody
-            fmap createNoteContent noteContent `orElse` internalServerError (toResponse ())
+            fmap createNoteContent noteContent `orElse` internalServerError (toResponse "Unexpected problem during note creation")
 
 deleteNote :: ServerPartT IO Response
-deleteNote = mzero
+deleteNote = do
+    path (\pathId -> do
+        maybeError <- liftIO $ NoteService.deleteNote pathId
+        (fmap toGenericError maybeError) `orElse` (ok $ toResponse ()))
 
 putNote :: ServerPartT IO Response
 putNote = mzero
@@ -60,6 +68,9 @@ serveStaticResource = do
     path (\filePath -> do
         nullDir
         serveFileFrom "static/" (guessContentTypeM mimeTypes) filePath)
+
+toGenericError :: (Show e) => e -> ServerPartT IO Response
+toGenericError e = badRequest $ toResponse $ show e
 
 orElse :: Maybe a -> a -> a
 (Just a) `orElse` _ = a
