@@ -39,16 +39,13 @@ postNote = do
     nullDir
     method POST
     req <- askRq
-    body <- liftIO $ takeRequestBody req
-    case body of
-        Just rqBody -> handleBody rqBody
-        Nothing -> ok $ toResponse "NoBody"
+    body <- takeRequestBody req
+    fmap handleBody body `orElse` (ok $ toResponse "NoBody")
     where
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
             let noteContent :: Maybe NoteContent = decode $ unBody rqBody
             fmap createNoteContent noteContent `orElse` internalServerError (toResponse ())
-            --fmap (ok . toResponse . createNote) noteContent `orElse` badRequest (toResponse ())
 
 deleteNote :: ServerPartT IO Response
 deleteNote = mzero
@@ -72,3 +69,4 @@ createNoteContent :: NoteContent -> ServerPartT IO Response
 createNoteContent noteContent = do
     maybeStorageId <- liftIO $ NoteService.createNote noteContent
     fmap (ok . toResponse .encode) maybeStorageId `orElse` internalServerError (toResponse ())
+
