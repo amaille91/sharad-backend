@@ -4,7 +4,11 @@ module NoteService (Error(NotFound, FatalError), createNote, getAllNotes, delete
 
 import Prelude hiding (id, writeFile, readFile)
 import Data.Maybe (fromJust)
+import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
+import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Except (ExceptT)
+import Control.Monad (mzero)
 import System.Directory (removePathForcibly, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Model (NoteContent(..), StorageId(..), Note(..))
 import Data.UUID.V4 (nextRandom)
@@ -15,36 +19,36 @@ import Data.ByteString.Lazy.Base64 (encodeBase64)
 import Data.Text.Lazy as T hiding(map, filter)
 import Data.Aeson (ToJSON, encode, decode)
 
-createNote :: NoteContent -> IO (Maybe StorageId)
+createNote :: NoteContent -> MaybeT IO StorageId
 createNote nc@(NoteContent { content  = contentStr }) = do
-    uuid <- fmap toString $ nextRandom
+    uuid <- liftIO $ fmap toString nextRandom
     let storeId = StorageId { id = uuid, version = base64Sha256 contentStr }
     liftIO $ do
         createDirectoryIfMissing True "target/.sharad/data"
         writeFile (fileName uuid) (encode $ Note { noteContent = nc, storageId = storeId })
-    return $ Just storeId
+    return storeId
 
 base64Sha256 :: String -> String
 base64Sha256 contentToHash = T.unpack . encodeBase64 . bytestringDigest . sha256 $ (BL.pack contentToHash)
 
-getAllNotes :: IO (Either Error [Note])
+getAllNotes :: ExceptT Error IO [Note]
 getAllNotes = do
-    storageDirExist <- doesDirectoryExist "target/.sharad/data/"
+    storageDirExist <- lift $ doesDirectoryExist "target/.sharad/data/"
     if not storageDirExist
-        then return $ Right []
+        then return []
         else do
-            simpleFileNames <- (listDirectory "target/.sharad/data/")
-            contents <- mapM readNote simpleFileNames
-            return $ fromMaybesM contents
+            simpleFileNames <- lift $ (listDirectory "target/.sharad/data/")
+            contents <- lift $ mapM readNote simpleFileNames
+            return $ fromMaybes contents
 
 deleteNote :: String -> IO (Maybe Error)
-deleteNote id = do
-    storageDirExist <- doesFileExist $ fileName id
+deleteNote id = runMaybeT $ do
+    storageDirExist <- lift $ doesFileExist $ fileName id
     if not storageDirExist
-        then return $ Just (FatalError ("File " ++ fileName id ++ " does not exist"))
+        then return $ FatalError ("File " ++ fileName id ++ " does not exist")
         else do
-            removePathForcibly $ fileName id
-            return Nothing
+            lift $ removePathForcibly $ fileName id
+            mzero
 
 data Error = NotFound FilePath | FatalError String deriving(Show)
 
