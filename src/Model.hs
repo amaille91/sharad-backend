@@ -9,6 +9,9 @@ module Model (NoteContent(NoteContent)
              , Note(Note)
              , storageId
              , noteContent
+             , NoteUpdate(NoteUpdate)
+             , targetId
+             , newContent
              ) where 
 
 import GHC.Generics (Generic)
@@ -35,3 +38,9 @@ data Note = Note { storageId :: StorageId
 
 instance ToJSON Note
 instance FromJSON Note
+
+data NoteUpdate = NoteUpdate { targetId :: String 
+                             , newContent :: NoteContent
+                             } deriving (Show, Generic)
+
+instance FromJSON NoteUpdate

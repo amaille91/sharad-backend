@@ -13,9 +13,9 @@ import Data.Either (either)
 import Control.Concurrent.MVar (takeMVar)
 import qualified Data.ByteString.Lazy.Char8 as BL (unpack)
 import Data.Aeson (decode, encode)
-import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestBody, unBody, rqBody, decodeBody, askRq, defaultBodyPolicy, toResponse, nullDir, path, serveFileFrom, guessContentTypeM, mimeTypes, uriRest, nullConf, simpleHTTP, toResponse,  method, ok, badRequest, internalServerError, dir, Method(GET, POST), Conf(..))
+import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestBody, unBody, rqBody, decodeBody, askRq, defaultBodyPolicy, toResponse, nullDir, path, serveFileFrom, guessContentTypeM, mimeTypes, uriRest, nullConf, simpleHTTP, toResponse,  method, ok, badRequest, internalServerError, notFound, dir, Method(GET, POST, DELETE, PUT), Conf(..))
 
-import Model (NoteContent, Note)
+import Model (NoteContent, Note, NoteUpdate)
 import qualified NoteService as NoteService
 
 runApp :: IO ()
@@ -56,13 +56,28 @@ postNote = do
 
 deleteNote :: ServerPartT IO Response
 deleteNote = do
+    method DELETE
     path (\pathId -> do
         nullDir
         maybeError <- liftIO $ NoteService.deleteNote pathId
         (fmap toGenericError maybeError) `orElse` (ok $ toResponse ()))
 
 putNote :: ServerPartT IO Response
-putNote = mzero
+putNote = do
+    nullDir
+    method PUT
+    body <- askRq >>= takeRequestBody
+    let
+        handleBody :: RqBody -> ServerPartT IO Response
+        handleBody rqBody = do
+            let noteUpdate :: Maybe NoteUpdate = decode $ unBody rqBody
+            fmap handleUpdate noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
+    fmap handleBody body `orElse` (ok $ toResponse "NoBody")
+
+handleUpdate :: NoteUpdate -> ServerPartT IO Response
+handleUpdate update =  do
+    recoverWith (const $ notFound $ toResponse "Unable to find storage dir")
+        (fmap (ok . toResponse . encode) (NoteService.modifyNote update))
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do

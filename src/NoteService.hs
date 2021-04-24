@@ -1,16 +1,16 @@
 {-# LANGUAGE NamedFieldPuns #-}
 
-module NoteService (Error(NotFound, FatalError), createNote, getAllNotes, deleteNote) where 
+module NoteService (Error(NotFound, FatalError), createNote, getAllNotes, deleteNote, modifyNote) where 
 
 import Prelude hiding (id, writeFile, readFile)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Except (ExceptT)
+import Control.Monad.Trans.Except (ExceptT, throwE)
 import Control.Monad (mzero)
 import System.Directory (removePathForcibly, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
-import Model (NoteContent(..), StorageId(..), Note(..))
+import Model (NoteContent(..), StorageId(..), Note(..), NoteUpdate(..))
 import Data.UUID.V4 (nextRandom)
 import Data.UUID (toString)
 import Data.Digest.Pure.SHA (sha256, bytestringDigest)
@@ -22,10 +22,14 @@ import Data.Aeson (ToJSON, encode, decode)
 createNote :: NoteContent -> MaybeT IO StorageId
 createNote nc@(NoteContent { content  = contentStr }) = do
     uuid <- liftIO $ fmap toString nextRandom
-    let storeId = StorageId { id = uuid, version = base64Sha256 contentStr }
+    liftIO $ writeContentOnDisk nc uuid
+
+writeContentOnDisk :: NoteContent -> String -> IO StorageId
+writeContentOnDisk noteContent fileId = do
+    let storeId = StorageId { id = fileId, version = base64Sha256 (content noteContent) }
     liftIO $ do
         createDirectoryIfMissing True "target/.sharad/data"
-        writeFile (fileName uuid) (encode $ Note { noteContent = nc, storageId = storeId })
+        writeFile (fileName fileId) (encode $ Note { noteContent = noteContent, storageId = storeId })
     return storeId
 
 base64Sha256 :: String -> String
@@ -49,6 +53,13 @@ deleteNote id = runMaybeT $ do
         else do
             lift $ removePathForcibly $ fileName id
             mzero
+
+modifyNote :: NoteUpdate -> ExceptT Error IO StorageId
+modifyNote NoteUpdate { targetId = fileId, newContent = new } = do
+    storageDirExist <- lift $ doesFileExist $ fileName fileId
+    if not storageDirExist
+        then throwE $ NotFound ("File " ++ fileName fileId ++ " does not exist")
+        else liftIO $ writeContentOnDisk new fileId
 
 data Error = NotFound FilePath | FatalError String deriving(Show)
 
