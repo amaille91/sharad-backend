@@ -18,29 +18,29 @@ import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestB
 import Model (NoteContent, Note, NoteUpdate)
 import qualified NoteService as NoteService
 
+defaultNoteService :: NoteService.DiskFileStorageConfig
+defaultNoteService = NoteService.DiskFileStorageConfig { NoteService.rootPath = "target/.sharad/data/" }
+
 runApp :: IO ()
-runApp = do
-    simpleHTTP nullConf { port = 8081 } $ msum [ noteController
-                                               ,serveStaticResource
-                                               , mzero
-                                               ]
+runApp = simpleHTTP nullConf { port = 8081 } $ msum [ noteController
+                                                    , serveStaticResource
+                                                    , mzero
+                                                    ]
         
 
 noteController :: ServerPartT IO Response
-noteController = do
-    dir "note" $ do
-        msum [ getNote
-             , postNote
-             , deleteNote
-             , putNote
-             ]
+noteController = dir "note" $ msum [ getNote
+                                   , postNote
+                                   , deleteNote
+                                   , putNote
+                                   ]
 
 getNote :: ServerPartT IO Response
 getNote = do
     nullDir
     method GET
     recoverWith (const $ genericInternalError "Unexpected problem during retrieving all notes")
-                (fmap (ok . toResponse . encode) NoteService.getAllNotes)
+                (fmap (ok . toResponse . encode) (NoteService.getAllNotes defaultNoteService))
 
 postNote :: ServerPartT IO Response
 postNote = do
@@ -59,7 +59,7 @@ deleteNote = do
     method DELETE
     path (\pathId -> do
         nullDir
-        maybeError <- liftIO $ NoteService.deleteNote pathId
+        maybeError <- liftIO $ NoteService.deleteNote defaultNoteService pathId
         (fmap toGenericError maybeError) `orElse` (ok $ toResponse ()))
 
 putNote :: ServerPartT IO Response
@@ -77,7 +77,7 @@ putNote = do
 handleUpdate :: NoteUpdate -> ServerPartT IO Response
 handleUpdate update =  do
     recoverWith (const $ notFound $ toResponse "Unable to find storage dir")
-        (fmap (ok . toResponse . encode) (NoteService.modifyNote update))
+        (fmap (ok . toResponse . encode) (NoteService.modifyNote defaultNoteService update))
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do
@@ -96,7 +96,7 @@ _        `orElse` b = b
 createNoteContent :: NoteContent -> ServerPartT IO Response
 createNoteContent noteContent = do
     withDefaultIO emptyInternalError
-                  (fmap (ok . toResponse .encode) $ NoteService.createNote noteContent)
+                  (fmap (ok . toResponse .encode) $ NoteService.createNote defaultNoteService noteContent)
 
 recoverIO :: (MonadIO m, Monad m) => ExceptT e IO (m a) -> (e -> (m a)) -> m a
 recoverIO exceptT f = join $ liftIO $ fmap (either f id) (runExceptT exceptT)

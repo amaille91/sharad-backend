@@ -39,7 +39,7 @@ data Note = Note { storageId :: StorageId
 instance ToJSON Note
 instance FromJSON Note
 
-data NoteUpdate = NoteUpdate { targetId :: String 
+data NoteUpdate = NoteUpdate { targetId :: StorageId 
                              , newContent :: NoteContent
                              } deriving (Show, Generic)
 
