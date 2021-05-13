@@ -1,5 +1,7 @@
 import Prelude hiding(id)
-import Test.HUnit
+import Test.HUnit.Lang
+import Test.HUnit.Base(Counts(..), (@?), (~:), test)
+import Test.HUnit.Text (runTestTT)
 import NoteService (createNote, getAllNotes, deleteNote, modifyNote, DiskFileStorageConfig(..), Error(..))
 import Model (NoteContent(..), StorageId(..), Note(..), NoteUpdate(..))
 import System.Directory (removeDirectoryRecursive, createDirectory,doesDirectoryExist, doesFileExist, listDirectory)
@@ -7,9 +9,16 @@ import Data.Maybe (fromJust, isJust)
 import Data.List ((\\))
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (runExceptT)
+import System.Exit (exitSuccess, exitFailure)
 
 main :: IO ()
 main = runTestTTAndExit noteServiceTests
+
+runTestTTAndExit tests = do
+  c <- runTestTT tests
+  if (errors c == 0) && (failures c == 0)
+    then exitSuccess
+    else exitFailure
 
 noteServiceTests = test [ "Creating a note should create a new file in storage directory" ~: withEmptyNoteDir createNoteTest
                         , "Getting all notes on an empty storage directory should give an empty list" ~: getEmptyDirTest
@@ -89,6 +98,8 @@ assertEqualWithoutOrder s as bs = do
     assertBool (s ++ "\n\t" ++ show bs ++ " should be equal in " ++ show as) (null (bs \\ as))
 
 assertNotEqual s a b = assertBool s (a /= b)
+
+assertBool s b = assertEqual s True b
  
 noteFilePathFromId :: StorageId -> String
 noteFilePathFromId storageId = noteDirPath ++ id storageId ++ ".txt"

@@ -15,9 +15,8 @@ import Model (NoteContent(..), StorageId(..), Note(..), NoteUpdate(..))
 import Data.UUID.V4 (nextRandom)
 import Data.UUID (toString)
 import Data.Digest.Pure.SHA (sha256, bytestringDigest)
-import Data.ByteString.Lazy.Char8 as BL hiding(map, filter)
-import Data.ByteString.Lazy.Base64 (encodeBase64)
-import Data.Text.Lazy as T hiding(map, filter)
+import Data.ByteString.Lazy.Char8 as BL hiding (map, filter)
+import qualified Data.ByteString.Base64.Lazy as Base64 (encode)
 import Data.Aeson (ToJSON, encode, decode)
 
 -- DATA
@@ -36,7 +35,7 @@ createNote config nc@(NoteContent { content  = contentStr }) = do
     liftIO $ writeContentOnDisk config nc uuid
 
 base64Sha256 :: String -> String
-base64Sha256 contentToHash = T.unpack . encodeBase64 . bytestringDigest . sha256 $ (BL.pack contentToHash)
+base64Sha256 contentToHash = BL.unpack . Base64.encode . bytestringDigest . sha256 $ (BL.pack contentToHash)
 
 getAllNotes :: DiskFileStorageConfig -> ExceptT Error IO [Note]
 getAllNotes config = do

@@ -14,11 +14,8 @@ bug-reports:    https://github.com/githubuser/sharad-back-haskell/issues
 author:         Author name here
 maintainer:     example@example.com
 copyright:      2021 Author name here
-license:        BSD3
-license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
-    README.md
     ChangeLog.md
 
 source-repository head
@@ -41,9 +38,8 @@ library
       , aeson
       , uuid
       , SHA
-      , base64
+      , base64-bytestring
       , binary
-      , text
       , directory
       , transformers
   default-language: Haskell2010
@@ -71,7 +67,7 @@ test-suite sharad-back-haskell-test
   build-depends:
       base >=4.7 && <5
     , sharad-back-haskell
-    , HUnit
+    , HUnit ==1.6.0.0
     , directory
     , transformers
   default-language: Haskell2010
