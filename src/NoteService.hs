@@ -93,3 +93,5 @@ noteExtension = ".txt"
 prefixWithStorageDir :: DiskFileStorageConfig -> String -> String
 prefixWithStorageDir storageConfig s = rootPath storageConfig ++ s
 
+hello = "hello"
+
