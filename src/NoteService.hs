@@ -1,7 +1,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-module NoteService (DiskFileStorageConfig(..), Error(..), createNote, getAllNotes, deleteNote, modifyNote) where 
+module NoteService (DiskFileStorageConfig(..), Error(..), createNote, getAllNotes, deleteNote, modifyNote) where
 
 import Prelude hiding (id, writeFile, readFile)
 import Data.Maybe (fromJust)
@@ -21,7 +21,7 @@ import Data.Aeson (ToJSON, encode, decode)
 
 -- DATA
 type Id = String
-data DiskFileStorageConfig = DiskFileStorageConfig { rootPath :: String }
+newtype DiskFileStorageConfig = DiskFileStorageConfig { rootPath :: String }
 data Error = NotFound FilePath | NotCurrentVersion StorageId | FatalError String deriving(Eq, Show)
 
     -- PRIVATE
@@ -30,12 +30,12 @@ type SimpleFileName = String
 
 -- FUNCTIONS
 createNote :: DiskFileStorageConfig -> NoteContent -> MaybeT IO StorageId
-createNote config nc@(NoteContent { content  = contentStr }) = do
+createNote config nc@NoteContent { content  = contentStr } = do
     uuid <- liftIO $ fmap toString nextRandom
     liftIO $ writeContentOnDisk config nc uuid
 
 base64Sha256 :: String -> String
-base64Sha256 contentToHash = BL.unpack . Base64.encode . bytestringDigest . sha256 $ (BL.pack contentToHash)
+base64Sha256 contentToHash = BL.unpack . Base64.encode . bytestringDigest . sha256 $ BL.pack contentToHash
 
 getAllNotes :: DiskFileStorageConfig -> ExceptT Error IO [Note]
 getAllNotes config = do
@@ -43,7 +43,7 @@ getAllNotes config = do
     if not storageDirExist
         then return []
         else do
-            simpleFileNames <- lift $ (listDirectory (rootPath config))
+            simpleFileNames <- lift $ listDirectory (rootPath config)
             contents <- lift $ mapM (readNote config) simpleFileNames
             return $ fromMaybes contents
 
@@ -62,11 +62,11 @@ modifyNote config NoteUpdate { targetId = requestedStorageId, newContent = new }
     if not noteExists
         then throwE $ NotFound (id requestedStorageId)
         else do
-            Just (Note { storageId = retrievedStorageId, noteContent = content }) <- lift $ readNote config (id requestedStorageId ++ noteExtension)
+            Just Note { storageId = retrievedStorageId, noteContent = content } <- lift $ readNote config (id requestedStorageId ++ noteExtension)
             if retrievedStorageId == requestedStorageId
                 then lift $ writeContentOnDisk config new (id requestedStorageId)
                 else throwE $ NotCurrentVersion requestedStorageId
-            
+
 
 writeContentOnDisk :: DiskFileStorageConfig -> NoteContent -> String -> IO StorageId
 writeContentOnDisk storageConfig noteContent fileId = do
@@ -76,13 +76,13 @@ writeContentOnDisk storageConfig noteContent fileId = do
     return storeId
 
 fromMaybes :: (Eq a) => [Maybe a] -> [a]
-fromMaybes = (map fromJust) . (filter (/= Nothing))
+fromMaybes = map fromJust . filter (/= Nothing)
 
 fromMaybesM :: (Eq a, Monad m) => [Maybe a] -> m [a]
 fromMaybesM = return . fromMaybes
 
 readNote :: DiskFileStorageConfig -> SimpleFileName -> IO (Maybe Note)
-readNote config = (fmap decode) . readFile . (prefixWithStorageDir config)
+readNote config = fmap decode . readFile . prefixWithStorageDir config
 
 fileName :: DiskFileStorageConfig -> Id -> FilePath
 fileName storageConfig id = prefixWithStorageDir storageConfig id ++ noteExtension

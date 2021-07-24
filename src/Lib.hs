@@ -22,18 +22,22 @@ defaultNoteService :: NoteService.DiskFileStorageConfig
 defaultNoteService = NoteService.DiskFileStorageConfig { NoteService.rootPath = "target/.sharad/data/" }
 
 runApp :: IO ()
-runApp = simpleHTTP nullConf { port = 8081 } $ msum [ noteController
+runApp = do
+    putStrLn "hitting server"
+    simpleHTTP nullConf { port = 8081 } $ msum [ noteController
                                                     , serveStaticResource
                                                     , mzero
                                                     ]
-        
+
 
 noteController :: ServerPartT IO Response
-noteController = dir "note" $ msum [ getNote
-                                   , postNote
-                                   , deleteNote
-                                   , putNote
-                                   ]
+noteController = do
+    lift $ putStrLn "hitting NoteController"
+    dir "note" $ msum [ getNote
+                      , postNote
+                      , deleteNote
+                      , putNote
+                      ]
 
 getNote :: ServerPartT IO Response
 getNote = do
@@ -52,7 +56,7 @@ postNote = do
         handleBody rqBody = do
             let noteContent :: Maybe NoteContent = decode $ unBody rqBody
             fmap createNoteContent noteContent `orElse` genericInternalError "Unexpected problem during note creation"
-    fmap handleBody body `orElse` (ok $ toResponse "NoBody")
+    fmap handleBody body `orElse` ok (toResponse "NoBody")
 
 deleteNote :: ServerPartT IO Response
 deleteNote = do
@@ -60,7 +64,7 @@ deleteNote = do
     path (\pathId -> do
         nullDir
         maybeError <- liftIO $ NoteService.deleteNote defaultNoteService pathId
-        (fmap toGenericError maybeError) `orElse` (ok $ toResponse ()))
+        fmap toGenericError maybeError `orElse` ok (toResponse ()))
 
 putNote :: ServerPartT IO Response
 putNote = do
@@ -72,17 +76,19 @@ putNote = do
         handleBody rqBody = do
             let noteUpdate :: Maybe NoteUpdate = decode $ unBody rqBody
             fmap handleUpdate noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
-    fmap handleBody body `orElse` (ok $ toResponse "NoBody")
+    fmap handleBody body `orElse` ok (toResponse "NoBody")
 
 handleUpdate :: NoteUpdate -> ServerPartT IO Response
 handleUpdate update =  do
-    recoverWith (const $ notFound $ toResponse "Unable to find storage dir")
-        (fmap (ok . toResponse . encode) (NoteService.modifyNote defaultNoteService update))
+    recoverWith (const.notFound.toResponse $ "Unable to find storage dir")
+        (fmap (ok.toResponse.encode) (NoteService.modifyNote defaultNoteService update))
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do
+    lift $ putStrLn "hitting static resource"
     method GET
     path (\filePath -> do
+        lift $ putStrLn ("trying to get resource " ++ filePath)
         nullDir
         serveFileFrom "static/" (guessContentTypeM mimeTypes) filePath)
 

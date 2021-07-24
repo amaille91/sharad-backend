@@ -1,4 +1,4 @@
-cabal-version: 1.12
+cabal-version: 2.4
 
 -- This file has been generated from package.yaml by hpack version 0.33.0.
 --
@@ -24,7 +24,6 @@ source-repository head
 library
   exposed-modules:
       Lib
-      , Model
       , NoteService
   other-modules:
       Paths_sharad_back_haskell
@@ -32,6 +31,7 @@ library
       src
   build-depends:
       base >=4.7 && <5
+      , sharad-model
       , happstack-server
       , bytestring
       , aeson
@@ -66,6 +66,7 @@ test-suite sharad-back-haskell-test
   build-depends:
       base >=4.7 && <5
     , sharad-back-haskell
+    , sharad-model
     , HUnit ==1.6.0.0
     , directory
     , transformers
