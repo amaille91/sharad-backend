@@ -1,1 +1,1 @@
-packages: sharad-back-haskell.cabal, ../sharad-model/sharad-model.cabal
+packages: sharad-back-haskell.cabal, ../sharad-common/sharad-common.cabal

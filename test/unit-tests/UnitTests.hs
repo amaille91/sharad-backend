@@ -1,3 +1,5 @@
+module UnitTests (runUnitTests) where
+
 import Prelude hiding(id)
 import Test.HUnit.Lang
 import Test.HUnit.Base(Counts(..), (@?), (~:), test)
@@ -11,8 +13,8 @@ import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (runExceptT)
 import System.Exit (exitSuccess, exitFailure)
 
-main :: IO ()
-main = runTestTTAndExit noteServiceTests
+runUnitTests :: IO ()
+runUnitTests = runTestTTAndExit noteServiceTests
 
 runTestTTAndExit tests = do
   c <- runTestTT tests
@@ -46,7 +48,7 @@ getEmptyDirTest = withEmptyNoteDir $ do
     assertEqual ("Expected [] but got " ++ show notes) [] notes
 
 createManyThenGetTest = do
-    maybecreationIds <- mapM (runMaybeT . (createNote testDiskConfig)) noteExamples
+    maybecreationIds <- mapM (runMaybeT . createNote testDiskConfig) noteExamples
     let creationIds = map fromJust maybecreationIds
     Right notes <- runExceptT $ getAllNotes testDiskConfig
     assertEqual "Their should be one note retrieved" (length creationIds) (length notes)
@@ -55,10 +57,10 @@ createManyThenGetTest = do
     where noteExamples = [ NoteContent { title = Just ("ExampleNoteTitle " ++ show int), content = "Arbitrary note content " ++ show int } | int <- [1..5] ]
 
 createManyThenDeleteAllTest = do
-    maybecreationIds <- mapM (runMaybeT . (createNote testDiskConfig)) noteExamples
+    maybecreationIds <- mapM (runMaybeT . createNote testDiskConfig) noteExamples
     let noteIds = map (id . fromJust) maybecreationIds
     results <- mapM (deleteNote testDiskConfig) noteIds
-    assertBool "all deletions should be a success" (all (not . isJust) results)
+    assertBool "all deletions should be a success" (not (any isJust results))
     dirContent <- retriveContentInDir noteDirPath
     assertEqual "note storage should be empty" [] dirContent
     where noteExamples = [ NoteContent { title = Just ("ExampleNoteTitle " ++ show int), content = "Arbitrary note content " ++ show int } | int <- [1..5] ]
@@ -88,7 +90,7 @@ modifyWrongCurrentVersion = do
     assertEqual "Error should be a WrongVersion of the storageId requested" (NotCurrentVersion $ wrongVersionStorageId creationId) error
     where
         noteExample = NoteContent { title = Just "ExampleNoteTitle", content = "Arbitrary note content" }
-        wrongVersionStorageId (StorageId { id = creationId, version = creationVersion }) =
+        wrongVersionStorageId StorageId { id = creationId, version = creationVersion } =
             StorageId { id = creationId, version = creationVersion ++ "make it wrong"}
         wrongVersionNoteUpdate creationStorageId =
             NoteUpdate { targetId = wrongVersionStorageId creationStorageId, newContent = NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"}}
@@ -99,8 +101,8 @@ assertEqualWithoutOrder s as bs = do
 
 assertNotEqual s a b = assertBool s (a /= b)
 
-assertBool s b = assertEqual s True b
- 
+assertBool s = assertEqual s True
+
 noteFilePathFromId :: StorageId -> String
 noteFilePathFromId storageId = noteDirPath ++ id storageId ++ ".txt"
 
@@ -110,7 +112,7 @@ retriveContentInDir dirPath = do
     return $ map (dirPath ++) dirFileNames
 
 hasFile :: [FilePath] -> IO Bool
-hasFile dirContent = fmap or $ sequence $ map doesFileExist dirContent
+hasFile dirContent = or <$> mapM doesFileExist dirContent
 
 testDiskConfig :: DiskFileStorageConfig
 testDiskConfig = DiskFileStorageConfig { rootPath = noteDirPath }
@@ -121,6 +123,6 @@ withEmptyDir dirPath _test = do
         then do
             removeDirectoryRecursive dirPath
             _test
-        else do 
+        else do
             _test
 

@@ -55,13 +55,14 @@ executable sharad-back-haskell-exe
     , sharad-back-haskell
   default-language: Haskell2010
 
-test-suite sharad-back-haskell-test
+test-suite sharad-unit-tests
   type: exitcode-stdio-1.0
-  main-is: Spec.hs
+  main-is: UnitTestsExec.hs
   other-modules:
-      Paths_sharad_back_haskell
+        Paths_sharad_back_haskell
+      , UnitTests
   hs-source-dirs:
-      test
+      test/unit-tests
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
@@ -70,4 +71,24 @@ test-suite sharad-back-haskell-test
     , HUnit ==1.6.0.0
     , directory
     , transformers
+  default-language: Haskell2010
+
+test-suite sharad-integration-tests
+  type: exitcode-stdio-1.0
+  main-is: IntegrationTestsExec.hs
+  other-modules:
+      Paths_sharad_back_haskell
+    , IntegrationTests
+  hs-source-dirs:
+    test/integration-tests
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , hspec
+    , HUnit
+    , http-conduit
+    , aeson
+    , bytestring
+    , utf8-string
+    , sharad-model
   default-language: Haskell2010
