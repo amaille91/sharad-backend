@@ -1,21 +1,15 @@
 cabal-version: 2.4
 
--- This file has been generated from package.yaml by hpack version 0.33.0.
---
--- see: https://github.com/sol/hpack
---
--- hash: 7a968d3a6f00f368abb071ec90ef297e17d4bc0e4107f7850d90f1fdb7643faf
-
-name:           sharad-back-haskell
+name:           sharad-backend
 version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/sharad-back-haskell#readme>
-homepage:       https://github.com/githubuser/sharad-back-haskell#readme
-bug-reports:    https://github.com/githubuser/sharad-back-haskell/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2021 Author name here
+description:
+homepage:
+bug-reports:
+author:
+maintainer:
+copyright:
 build-type:     Simple
---extra-source-files:
+-- extra-source-files:
 
 source-repository head
   type: git
@@ -26,7 +20,7 @@ library
       Lib
       , NoteService
   other-modules:
-      Paths_sharad_back_haskell
+      Paths_sharad_backend
   hs-source-dirs:
       src
   build-depends:
@@ -43,30 +37,30 @@ library
       , transformers
   default-language: Haskell2010
 
-executable sharad-back-haskell-exe
+executable sharad-backend
   main-is: Main.hs
   other-modules:
-      Paths_sharad_back_haskell
+      Paths_sharad_backend
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
       base >=4.7 && <5
-    , sharad-back-haskell
+    , sharad-backend
   default-language: Haskell2010
 
 test-suite sharad-unit-tests
   type: exitcode-stdio-1.0
   main-is: UnitTestsExec.hs
   other-modules:
-        Paths_sharad_back_haskell
+        Paths_sharad_backend
       , UnitTests
   hs-source-dirs:
       test/unit-tests
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
-    , sharad-back-haskell
+    , sharad-backend
     , sharad-model
     , HUnit ==1.6.0.0
     , directory
@@ -77,7 +71,7 @@ test-suite sharad-integration-tests
   type: exitcode-stdio-1.0
   main-is: IntegrationTestsExec.hs
   other-modules:
-      Paths_sharad_back_haskell
+      Paths_sharad_backend
     , IntegrationTests
   hs-source-dirs:
     test/integration-tests
