@@ -11,5 +11,7 @@ This file is meant to describe some persona used to test the application in a us
     2. see previously created items on a new connection
     3. delete created items and not seeing them on screen anymore
     4. modify previously created items and see the changes on screen
+    5. deleted notes should be found back in trash
+    6. trashed items can be force-deleted
     
     All those characteristics should be persitent after a server restart (application server/physical server)

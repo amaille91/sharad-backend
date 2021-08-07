@@ -31,31 +31,30 @@ runIntegrationTests = hspec $ do
         deleteCreatedNote $ (id.storageId) modifiedNote
         assertServerIsNew
 
-  where
-    assertServerIsNew :: Expectation
-    assertServerIsNew = do
-      getResponse :: Response [Note] <- sendRequestWithJSONBody "GET" ()
-      assertNoNoteInResponse "Failed to start with an empty server" getResponse
+assertServerIsNew :: Expectation
+assertServerIsNew = do
+  getResponse :: Response [Note] <- sendRequestWithJSONBody "GET" ()
+  assertNoNoteInResponse "Failed to start with an empty server" getResponse
 
-    createNewNote :: NoteContent -> Expectation
-    createNewNote noteToCreate = do
-      postResponse :: Response StorageId <- sendRequestWithJSONBody "POST" noteToCreate
-      assertStatusCode200 "Failed to create first note" postResponse
+createNewNote :: NoteContent -> Expectation
+createNewNote noteToCreate = do
+  postResponse :: Response StorageId <- sendRequestWithJSONBody "POST" noteToCreate
+  assertStatusCode200 "Failed to create first note" postResponse
 
-    assertGetNoteWithContent :: NoteContent -> IO [Note]
-    assertGetNoteWithContent expectedNoteContent = do
-      getResponse <- sendRequestWithJSONBody "GET" ()
-      assertNotesWithContentsFound "Failed to retriev created note" [expectedNoteContent] getResponse
+assertGetNoteWithContent :: NoteContent -> IO [Note]
+assertGetNoteWithContent expectedNoteContent = do
+  getResponse <- sendRequestWithJSONBody "GET" ()
+  assertNotesWithContentsFound "Failed to retriev created note" [expectedNoteContent] getResponse
 
-    modifyNotes :: NoteUpdate -> Expectation
-    modifyNotes noteupdate = do
-      putResponse :: Response StorageId <- sendRequestWithJSONBody "PUT" noteupdate
-      assertStatusCode200 "Failed to modify first note" putResponse
+modifyNotes :: NoteUpdate -> Expectation
+modifyNotes noteupdate = do
+  putResponse :: Response StorageId <- sendRequestWithJSONBody "PUT" noteupdate
+  assertStatusCode200 "Failed to modify first note" putResponse
 
-    deleteCreatedNote :: String -> Expectation
-    deleteCreatedNote idToDelete = do
-      deleteResponse <- parseRequest ("DELETE http://localhost:8081/note/" ++ idToDelete) >>= httpBS
-      assertStatusCode200 "Failed to delete modified note" deleteResponse
+deleteCreatedNote :: String -> Expectation
+deleteCreatedNote idToDelete = do
+  deleteResponse <- parseRequest ("DELETE http://localhost:8081/note/" ++ idToDelete) >>= httpBS
+  assertStatusCode200 "Failed to delete modified note" deleteResponse
 
 assertNotesWithContentsFound :: String -> [NoteContent] -> Response [Note] -> IO [Note]
 assertNotesWithContentsFound errorPrefix expectedNoteContents response = do

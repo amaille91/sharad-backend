@@ -19,7 +19,7 @@ import Model (NoteContent, Note, NoteUpdate)
 import qualified NoteService as NoteService
 
 defaultNoteService :: NoteService.DiskFileStorageConfig
-defaultNoteService = NoteService.DiskFileStorageConfig { NoteService.rootPath = "target/.sharad/data/" }
+defaultNoteService = NoteService.DiskFileStorageConfig { NoteService.rootPath = ".sharad/data/" }
 
 runApp :: IO ()
 runApp = do

@@ -15,7 +15,7 @@ import Model (NoteContent(..), StorageId(..), Note(..), NoteUpdate(..))
 import Data.UUID.V4 (nextRandom)
 import Data.UUID (toString)
 import Data.Digest.Pure.SHA (sha256, bytestringDigest)
-import Data.ByteString.Lazy.Char8 as BL hiding (map, filter)
+import Data.ByteString.Lazy.Char8 as BL hiding (map, filter, putStrLn)
 import qualified Data.ByteString.Base64.Lazy as Base64 (encode)
 import Data.Aeson (ToJSON, encode, decode)
 
@@ -71,7 +71,9 @@ modifyNote config NoteUpdate { targetId = requestedStorageId, newContent = new }
 writeContentOnDisk :: DiskFileStorageConfig -> NoteContent -> String -> IO StorageId
 writeContentOnDisk storageConfig noteContent fileId = do
     let storeId = StorageId { id = fileId, version = base64Sha256 (content noteContent) }
+    putStrLn $ "Creating "  ++ (rootPath storageConfig)
     createDirectoryIfMissing True (rootPath storageConfig)
+    putStrLn $ "Writing file " ++ (fileName storageConfig fileId)
     writeFile (fileName storageConfig fileId) (encode $ Note { noteContent = noteContent, storageId = storeId })
     return storeId
 
