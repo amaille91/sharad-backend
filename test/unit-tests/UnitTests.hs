@@ -52,7 +52,7 @@ createManyThenGetTest = do
     let creationIds = map fromJust maybecreationIds
     Right notes <- runExceptT $ getAllNotes testDiskConfig
     assertEqual "Their should be one note retrieved" (length creationIds) (length notes)
-    assertEqualWithoutOrder "RetrievedNote should have the same id as the created note" creationIds (map storageId notes)
+    assertEqualWithoutOrder "RetrievedNote should have the same id as the created note" creationIds (map noteId notes)
     assertEqualWithoutOrder "RetrievedNote should have the same content as the created note" noteExamples (map noteContent notes)
     where noteExamples = [ NoteContent { title = Just ("ExampleNoteTitle " ++ show int), content = "Arbitrary note content " ++ show int } | int <- [1..5] ]
 
@@ -76,13 +76,13 @@ modifyAnExistingNote = do
     assertNotEqual "Updated note version should be different from original note's version" (version creationId) (version newcreationId)
     where
         noteExample = NoteContent { title = Just "ExampleNoteTitle", content = "Arbitrary note content" }
-        arbitraryNoteUpdate creationId = NoteUpdate { targetId = creationId, newContent = NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"}}
+        arbitraryNoteUpdate creationId = NoteUpdate creationId (NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"})
 
 modifyANonExistingNote = do
-    Left error <- runExceptT $ modifyNote testDiskConfig (arbitraryNoteUpdate storageId)
+    Left error <- runExceptT $ modifyNote testDiskConfig (arbitraryNoteUpdate noteId)
     assertEqual "Error should be a NotFound of the requested id" (NotFound "id") error
     where
-        arbitraryNoteUpdate storageId = NoteUpdate { targetId = StorageId { id = "id", version = "" }, newContent = NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"}}
+        arbitraryNoteUpdate storageId = NoteUpdate StorageId { id = "id", version = "" } (NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"})
 
 modifyWrongCurrentVersion = do
     Just creationId <- runMaybeT $ createNote testDiskConfig noteExample
@@ -93,7 +93,7 @@ modifyWrongCurrentVersion = do
         wrongVersionStorageId StorageId { id = creationId, version = creationVersion } =
             StorageId { id = creationId, version = creationVersion ++ "make it wrong"}
         wrongVersionNoteUpdate creationStorageId =
-            NoteUpdate { targetId = wrongVersionStorageId creationStorageId, newContent = NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"}}
+            NoteUpdate (wrongVersionStorageId creationStorageId) (NoteContent { title = Just "ModifiedNoteTitle", content = "Modified content too"})
 
 assertEqualWithoutOrder s as bs = do
     assertBool (s ++ "\n\t" ++ show as ++ " should be equal in " ++ show bs) (null (as \\ bs))

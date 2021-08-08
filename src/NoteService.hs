@@ -3,7 +3,7 @@
 
 module NoteService (DiskFileStorageConfig(..), Error(..), createNote, getAllNotes, deleteNote, modifyNote) where
 
-import Prelude hiding (id, writeFile, readFile)
+import Prelude hiding (id, writeFile, readFile, log)
 import Data.Maybe (fromJust)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Class (lift)
@@ -11,11 +11,11 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Except (ExceptT, throwE)
 import Control.Monad (mzero)
 import System.Directory (removePathForcibly, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
-import Model (NoteContent(..), StorageId(..), Note(..), NoteUpdate(..))
+import Model (NoteContent(..), StorageId(..), Note(..), NoteUpdate(..), ChecklistContent(..), Checklist(..), ChecklistUpdate(..))
 import Data.UUID.V4 (nextRandom)
 import Data.UUID (toString)
 import Data.Digest.Pure.SHA (sha256, bytestringDigest)
-import Data.ByteString.Lazy.Char8 as BL hiding (map, filter, putStrLn)
+import Data.ByteString.Lazy.Char8 as BL hiding (map, filter, putStrLn, appendFile)
 import qualified Data.ByteString.Base64.Lazy as Base64 (encode)
 import Data.Aeson (ToJSON, encode, decode)
 
@@ -57,12 +57,12 @@ deleteNote config id = runMaybeT $ do
             mzero
 
 modifyNote :: DiskFileStorageConfig -> NoteUpdate -> ExceptT Error IO StorageId
-modifyNote config NoteUpdate { targetId = requestedStorageId, newContent = new } = do
+modifyNote config (NoteUpdate requestedStorageId new) = do
     noteExists <- lift $ doesFileExist $ fileName config (id requestedStorageId)
     if not noteExists
         then throwE $ NotFound (id requestedStorageId)
         else do
-            Just Note { storageId = retrievedStorageId, noteContent = content } <- lift $ readNote config (id requestedStorageId ++ noteExtension)
+            Just (Note retrievedStorageId content) <- lift $ readNote config (id requestedStorageId ++ noteExtension)
             if retrievedStorageId == requestedStorageId
                 then lift $ writeContentOnDisk config new (id requestedStorageId)
                 else throwE $ NotCurrentVersion requestedStorageId
@@ -71,10 +71,10 @@ modifyNote config NoteUpdate { targetId = requestedStorageId, newContent = new }
 writeContentOnDisk :: DiskFileStorageConfig -> NoteContent -> String -> IO StorageId
 writeContentOnDisk storageConfig noteContent fileId = do
     let storeId = StorageId { id = fileId, version = base64Sha256 (content noteContent) }
-    putStrLn $ "Creating "  ++ (rootPath storageConfig)
+    log $ "Creating "  ++ (rootPath storageConfig)
     createDirectoryIfMissing True (rootPath storageConfig)
-    putStrLn $ "Writing file " ++ (fileName storageConfig fileId)
-    writeFile (fileName storageConfig fileId) (encode $ Note { noteContent = noteContent, storageId = storeId })
+    log $ "Writing file " ++ (fileName storageConfig fileId)
+    writeFile (fileName storageConfig fileId) (encode $ (Note storeId noteContent))
     return storeId
 
 fromMaybes :: (Eq a) => [Maybe a] -> [a]
@@ -97,3 +97,4 @@ prefixWithStorageDir storageConfig s = rootPath storageConfig ++ s
 
 hello = "hello"
 
+log s = appendFile  "./server.log" $ s ++ "\n"
