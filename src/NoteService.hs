@@ -1,6 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-
-module NoteService (DiskFileStorageConfig(..), Error(..), createItem, getAllItems, deleteItem, modifyNote) where
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+ 
+module NoteService (DiskFileStorageConfig(..), CRUDEngine(..), Error(..), createItem, getAllItems, deleteItem, modifyItem) where
 
 import Prelude hiding (id, writeFile, readFile, log)
 import Data.Maybe (fromJust)
@@ -18,20 +20,29 @@ import Data.Aeson (ToJSON, FromJSON, encode, decode)
 
 -- DATA
 type Id = String
-newtype DiskFileStorageConfig = DiskFileStorageConfig { rootPath :: String }
+class DiskFileStorageConfig a where
+    rootPath :: a -> String
+
 data Error = NotFound FilePath | NotCurrentVersion StorageId | FatalError String deriving(Eq, Show)
 
-    -- PRIVATE
+class (DiskFileStorageConfig crudType, Content a) => CRUDEngine crudType a | crudType -> a where
+  getItems :: crudType -> ExceptT Error IO [a]
+  postItem :: crudType -> a -> MaybeT IO StorageId
+  delItem :: crudType -> String -> IO (Maybe Error)
+  putItem :: crudType -> Identifiable a -> ExceptT Error IO StorageId
+  crudTypeDenomination :: crudType -> String
+
+-- PRIVATE
 -- A fileName with its extension but without its containing directory path (e.g. "26dfc71b-63aa-479d-b1c0-3d90eec1083c.txt")
 type SimpleFileName = String
 
 -- FUNCTIONS
-createItem :: Content a => DiskFileStorageConfig -> a -> MaybeT IO StorageId
+createItem :: CRUDEngine crudType a => crudType -> a -> MaybeT IO StorageId
 createItem config nc = do
     uuid <- liftIO $ fmap toString nextRandom
     liftIO $ writeContentOnDisk config nc uuid
 
-getAllItems :: (Eq a, FromJSON a) => DiskFileStorageConfig -> ExceptT Error IO [a]
+getAllItems :: CRUDEngine crudType a => crudType -> ExceptT Error IO [a]
 getAllItems config = do
     storageDirExist <- lift $ doesDirectoryExist (rootPath config)
     if not storageDirExist
@@ -41,7 +52,7 @@ getAllItems config = do
             contents <- lift $ mapM (readItemInFile config) simpleFileNames
             return $ fromMaybes contents
 
-deleteItem :: DiskFileStorageConfig -> String -> IO (Maybe Error)
+deleteItem :: DiskFileStorageConfig confType => confType -> String -> IO (Maybe Error)
 deleteItem config id = runMaybeT $ do
     storageDirExist <- lift $ doesFileExist $ fileName config id
     if not storageDirExist
@@ -50,8 +61,8 @@ deleteItem config id = runMaybeT $ do
             lift $ removePathForcibly $ fileName config id
             mzero
 
-modifyNote :: Content a => DiskFileStorageConfig -> Identifiable a -> ExceptT Error IO StorageId
-modifyNote config (Identifiable requestedStorageId new) = do
+modifyItem :: CRUDEngine crudType a => crudType -> Identifiable a -> ExceptT Error IO StorageId
+modifyItem config (Identifiable requestedStorageId new) = do
     noteExists <- lift $ doesFileExist $ fileName config (id requestedStorageId)
     if not noteExists
         then throwE $ NotFound (id requestedStorageId)
@@ -62,7 +73,7 @@ modifyNote config (Identifiable requestedStorageId new) = do
                 else throwE $ NotCurrentVersion requestedStorageId
 
 
-writeContentOnDisk :: Content a => DiskFileStorageConfig -> a -> String -> IO StorageId
+writeContentOnDisk :: CRUDEngine crudType a => crudType -> a -> String -> IO StorageId
 writeContentOnDisk storageConfig content fileId = do
     let storeId = StorageId { id = fileId, version = hash content }
     log $ "Creating "  ++ (rootPath storageConfig)
@@ -77,16 +88,16 @@ fromMaybes = map fromJust . filter (/= Nothing)
 fromMaybesM :: (Eq a, Monad m) => [Maybe a] -> m [a]
 fromMaybesM = return . fromMaybes
 
-readItemInFile :: FromJSON a => DiskFileStorageConfig -> SimpleFileName -> IO (Maybe a)
+readItemInFile :: (DiskFileStorageConfig configType, FromJSON a) => configType -> SimpleFileName -> IO (Maybe a)
 readItemInFile config = fmap decode . readFile . prefixWithStorageDir config
 
-fileName :: DiskFileStorageConfig -> Id -> FilePath
+fileName :: DiskFileStorageConfig configType => configType -> Id -> FilePath
 fileName storageConfig id = prefixWithStorageDir storageConfig id ++ noteExtension
 
 noteExtension :: String
 noteExtension = ".txt"
 
-prefixWithStorageDir :: DiskFileStorageConfig -> String -> String
+prefixWithStorageDir :: DiskFileStorageConfig configType => configType -> String -> String
 prefixWithStorageDir storageConfig s = rootPath storageConfig ++ s
 
 hello = "hello"
