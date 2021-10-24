@@ -4,3 +4,4 @@ dist-newstyle/
 *.local
 .vscode/
 *.swp
+*.swo

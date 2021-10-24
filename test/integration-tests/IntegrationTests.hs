@@ -26,16 +26,16 @@ runIntegrationTests = hspec $ do
         firstNoteNewContent = NoteContent { title = Just "First note new title", content = "This is a new content for the first note" }
       assertServerIsNew
       createNewContent firstNoteContent
-      [firstNote :: Note] <- assertGetWithContent firstNoteContent
-      modify $ NoteUpdate (storageId firstNote) firstNoteNewContent
+      [firstNote :: Identifiable NoteContent] <- assertGetWithContent firstNoteContent
+      modify $ Identifiable (storageId firstNote) firstNoteNewContent
       [modifiedNote] <- assertGetWithContent firstNoteNewContent
       deleteNote $ (id.noteId) modifiedNote
       assertServerIsNew
     it "should satisfy the basics, in one session of the Very Firsr User's needs, checklist-wise" $ do
       createNewContent firstChecklistContent
-      [firstChecklist :: Checklist] <- assertGetWithContent firstChecklistContent
-      modify $ ChecklistUpdate (storageId firstChecklist) firstChecklistNewContent
-      [modifiedChecklist :: Checklist] <- assertGetWithContent  firstChecklistNewContent
+      [firstChecklist :: Identifiable ChecklistContent] <- assertGetWithContent firstChecklistContent
+      modify $ Identifiable (storageId firstChecklist) firstChecklistNewContent
+      [modifiedChecklist :: Identifiable ChecklistContent] <- assertGetWithContent  firstChecklistNewContent
       deleteChecklist $ (id.storageId) modifiedChecklist
         where
         firstChecklistContent    = ChecklistContent { name = "First checklist"

@@ -15,73 +15,101 @@ import qualified Data.ByteString.Lazy.Char8 as BL (unpack)
 import Data.Aeson (decode, encode)
 import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestBody, unBody, rqBody, decodeBody, askRq, defaultBodyPolicy, toResponse, nullDir, path, serveFileFrom, guessContentTypeM, mimeTypes, uriRest, nullConf, simpleHTTP, toResponse,  method, ok, badRequest, internalServerError, notFound, dir, Method(GET, POST, DELETE, PUT), Conf(..))
 
-import Model (NoteContent, Note, NoteUpdate)
+import Model (NoteContent, Content, Identifiable(..))
 import qualified NoteService as NoteService
 
-defaultNoteService :: NoteService.DiskFileStorageConfig
-defaultNoteService = NoteService.DiskFileStorageConfig { NoteService.rootPath = ".sharad/data/" }
+data CRUDType = CRUDNote | CRUDChecklist
+
+defaultCRUDServiceConf :: CRUDType -> NoteService.DiskFileStorageConfig
+defaultCRUDServiceConf CRUDNote = NoteService.DiskFileStorageConfig { NoteService.rootPath = ".sharad/data/note" }
+defaultCRUDServiceConf CRUDChecklist = NoteService.DiskFileStorageConfig { NoteService.rootPath = ".sharad/data/checklist" }
 
 runApp :: IO ()
 runApp = do
     putStrLn "hitting server"
     simpleHTTP nullConf { port = 8081 } $ msum [ noteController
-                                                    , serveStaticResource
-                                                    , mzero
-                                                    ]
+                                               , checklistController
+                                               , serveStaticResource
+                                               , mzero
+                                               ]
 
 
 noteController :: ServerPartT IO Response
 noteController = do
     lift $ putStrLn "hitting NoteController"
-    dir "note" $ msum [ getNote
-                      , postNote
-                      , deleteNote
-                      , putNote
+    dir "note" $ msum [ crudGet CRUDChecklist
+                      , crudPost CRUDNote
+                      , crudDelete CRUDNote
+                      , crudPut CRUDNote
                       ]
 
-getNote :: ServerPartT IO Response
-getNote = do
+checklistController :: ServerPartT IO Response
+checklistController = do
+  lift $ putStrLn "hitting lift controller"
+  dir "checklist" $ msum [ crudGet CRUDChecklist
+                         , crudPost CRUDChecklist
+                         , crudDelete CRUDChecklist
+                         , crudPut CRUDChecklist
+                         ]
+
+crudGet :: CRUDType -> ServerPartT IO Response
+crudGet crudType = do
     nullDir
     method GET
-    recoverWith (const $ genericInternalError "Unexpected problem during retrieving all notes")
-                (fmap (ok . toResponse . encode) (NoteService.getAllNotes defaultNoteService))
+    recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudType)
+                (fmap (ok . toResponse . encode) (NoteService.getAllItems $ defaultCRUDServiceConf crudType))
+  where
+    crudTypeDenomination CRUDNote = "notes"
+    crudTypeDenomination CRUDChecklist = "checklists"
+    
 
-postNote :: ServerPartT IO Response
-postNote = do
+crudPost :: CRUDType -> ServerPartT IO Response
+crudPost crudType = do
     nullDir
     method POST
     body <- askRq >>= takeRequestBody
     let
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
-            let noteContent :: Maybe NoteContent = decode $ unBody rqBody
-            fmap createNoteContent noteContent `orElse` genericInternalError "Unexpected problem during note creation"
+            let noteContent :: Content a => Maybe a 
+                noteContent = decode $ unBody rqBody
+            fmap (createContent crudType) noteContent `orElse` genericInternalError "Unexpected problem during note creation"
     fmap handleBody body `orElse` ok (toResponse "NoBody")
 
-deleteNote :: ServerPartT IO Response
-deleteNote = do
+
+createContent :: Content a => CRUDType -> a -> ServerPartT IO Response
+createContent crudType noteContent = do
+    withDefaultIO emptyInternalError
+                  (fmap (ok . toResponse .encode) $ NoteService.createItem noteServiceConfig noteContent)
+    where noteServiceConfig = defaultCRUDServiceConf crudType 
+
+crudDelete :: CRUDType -> ServerPartT IO Response
+crudDelete crudType = do
     method DELETE
     path (\pathId -> do
         nullDir
-        maybeError <- liftIO $ NoteService.deleteNote defaultNoteService pathId
+        maybeError <- liftIO $ NoteService.deleteItem noteServiceConf pathId
         fmap toGenericError maybeError `orElse` ok (toResponse ()))
+        where noteServiceConf = defaultCRUDServiceConf crudType
 
-putNote :: ServerPartT IO Response
-putNote = do
+crudPut :: CRUDType -> ServerPartT IO Response
+crudPut crudType = do
     nullDir
     method PUT
     body <- askRq >>= takeRequestBody
     let
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
-            let noteUpdate :: Maybe NoteUpdate = decode $ unBody rqBody
-            fmap handleUpdate noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
+            let noteUpdate :: Content a => Maybe (Identifiable a)
+                noteUpdate = decode $ unBody rqBody
+            fmap (handleUpdate crudType) noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
     fmap handleBody body `orElse` ok (toResponse "NoBody")
 
-handleUpdate :: NoteUpdate -> ServerPartT IO Response
-handleUpdate update =  do
+handleUpdate :: CRUDType -> Identifiable NoteContent -> ServerPartT IO Response
+handleUpdate crudType update =  do
     recoverWith (const.notFound.toResponse $ "Unable to find storage dir")
-        (fmap (ok.toResponse.encode) (NoteService.modifyNote defaultNoteService update))
+        (fmap (ok.toResponse.encode) (NoteService.modifyNote crudServiceConf update))
+        where crudServiceConf = defaultCRUDServiceConf crudType
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do
@@ -98,11 +126,6 @@ toGenericError e = badRequest $ toResponse $ show e
 orElse :: Maybe a -> a -> a
 (Just a) `orElse` _ = a
 _        `orElse` b = b
-
-createNoteContent :: NoteContent -> ServerPartT IO Response
-createNoteContent noteContent = do
-    withDefaultIO emptyInternalError
-                  (fmap (ok . toResponse .encode) $ NoteService.createNote defaultNoteService noteContent)
 
 recoverIO :: (MonadIO m, Monad m) => ExceptT e IO (m a) -> (e -> (m a)) -> m a
 recoverIO exceptT f = join $ liftIO $ fmap (either f id) (runExceptT exceptT)

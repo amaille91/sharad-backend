@@ -25,16 +25,14 @@ library
       src
   build-depends:
       base >=4.7 && <5
-      , sharad-model
-      , happstack-server
-      , bytestring
-      , aeson
-      , uuid
-      , SHA
-      , base64-bytestring
-      , binary
-      , directory
-      , transformers
+    , sharad-model
+    , happstack-server
+    , bytestring
+    , aeson
+    , uuid
+    , binary
+    , directory
+    , transformers
   default-language: Haskell2010
 
 executable sharad-backend
