@@ -22,14 +22,14 @@ runIntegrationTests = hspec $ do
   describe "Integration Tests" $ do
     it "should satisfy the basics, in one session, of the Very First User's needs, note-wise" $ do
       let
-        firstNoteContent = NoteContent { title = Just "First note", content = "First note content" }
-        firstNoteNewContent = NoteContent { title = Just "First note new title", content = "This is a new content for the first note" }
+        firstNoteContent = NoteContent { title = Just "First note", noteContent = "First note content" }
+        firstNoteNewContent = NoteContent { title = Just "First note new title", noteContent = "This is a new content for the first note" }
       assertServerIsNew
       createNewContent firstNoteContent
       [firstNote :: Identifiable NoteContent] <- assertGetWithContent firstNoteContent
       modify $ Identifiable (storageId firstNote) firstNoteNewContent
       [modifiedNote] <- assertGetWithContent firstNoteNewContent
-      deleteNote $ (id.noteId) modifiedNote
+      deleteNote $ (id.storageId) modifiedNote
       assertServerIsNew
     it "should satisfy the basics, in one session of the Very Firsr User's needs, checklist-wise" $ do
       createNewContent firstChecklistContent
@@ -51,7 +51,7 @@ runIntegrationTests = hspec $ do
 
 assertServerIsNew :: Expectation
 assertServerIsNew = do
-  getResponse :: Response [Note] <- sendRequestWithJSONBody "GET" ()
+  getResponse :: Response [Identifiable NoteContent] <- sendRequestWithJSONBody "GET" ()
   assertNoNoteInResponse "Failed to start with an empty server" getResponse
 
 createNewContent :: (Content contentType) => contentType -> Expectation
@@ -59,12 +59,12 @@ createNewContent content = do
   postResponse :: Response StorageId <- sendRequestWithJSONBody "POST" content
   assertStatusCode200 ("Failed to create item" ++ show content) postResponse
 
-assertGetWithContent :: (GettableContent itemType) => ContentType itemType -> IO [itemType]
+assertGetWithContent :: Content a => a -> IO [Identifiable a]
 assertGetWithContent expectedContent = do
   getResponse <- sendRequestWithJSONBody "GET" ()
   assertWithFoundContent ("Failed to retrieve created content" ++ show expectedContent) [expectedContent] getResponse
 
-modify :: Update updateType => updateType -> Expectation
+modify :: Content a => Identifiable a -> Expectation
 modify update = do
   putResponse :: Response StorageId <- sendRequestWithJSONBody "PUT" update
   assertStatusCode200 ("Failed to apply modification " ++ show update) putResponse
@@ -77,10 +77,10 @@ deleteItem rootItemPath idToDelete = do
   deleteResponse <- parseRequest ("DELETE http://localhost:8081/" ++ rootItemPath ++ idToDelete) >>= httpBS
   assertStatusCode200 ("Failed to delete item" ++ show idToDelete) deleteResponse
 
-assertWithFoundContent :: GettableContent itemType => String -> [ContentType itemType] -> Response [itemType] -> IO [itemType]
+assertWithFoundContent :: Content a => String -> [a] -> Response [Identifiable a] -> IO [Identifiable a]
 assertWithFoundContent errorPrefix expectedContents response = do
   assertStatusCode200 errorPrefix response
-  assertEqual (errorPrefix ++ "\n\tExpected notes with contents:\n" ++ show expectedContents ++ "\nin response") expectedContents  (map getContent responseItems)
+  assertEqual (errorPrefix ++ "\n\tExpected notes with contents:\n" ++ show expectedContents ++ "\nin response") expectedContents  (map content responseItems)
   return responseItems
   where
     responseItems = getResponseBody response
@@ -105,7 +105,7 @@ assertNoNoteInResponse errorPrefix response = do
 assertStatusCode200 :: String -> Response a -> Assertion
 assertStatusCode200 errorPrefix response = assertEqual (errorPrefix ++ "Expected 200 response status code") 200 (getResponseStatusCode response)
 
-modifyNote :: NoteContent -> Note -> NoteUpdate
-modifyNote newContent previousNote = NoteUpdate (noteId previousNote) newContent
+modifyNote :: Content a => a -> Identifiable a -> Identifiable a
+modifyNote newContent previousNote = Identifiable (storageId previousNote) newContent
 
 

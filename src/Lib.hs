@@ -17,31 +17,21 @@ import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestB
 
 import Model (NoteContent, ChecklistContent, Content, Identifiable(..))
 import qualified NoteService as NoteService
+import Crud
+import NoteCrud (NoteServiceConfig(..))
 
 data ChecklistServiceConfig = ChecklistServiceConfig
 
-instance NoteService.DiskFileStorageConfig ChecklistServiceConfig where
+instance DiskFileStorageConfig ChecklistServiceConfig where
     rootPath ChecklistServiceConfig = ".sharad/data/note"
 
-instance NoteService.CRUDEngine ChecklistServiceConfig ChecklistContent where
+instance CRUDEngine ChecklistServiceConfig ChecklistContent where
   getItems = NoteService.getAllItems
   postItem = NoteService.createItem
   delItem = NoteService.deleteItem
   putItem = NoteService.modifyItem
   crudTypeDenomination ChecklistServiceConfig = "checklist"
     
-data NoteServiceConfig = NoteServiceConfig
-
-instance NoteService.DiskFileStorageConfig NoteServiceConfig where
-    rootPath NoteServiceConfig = ".sharad/data/note"
-
-instance NoteService.CRUDEngine NoteServiceConfig NoteContent where
-  getItems = NoteService.getAllItems
-  postItem = NoteService.createItem
-  delItem = NoteService.deleteItem
-  putItem = NoteService.modifyItem
-  crudTypeDenomination NoteServiceConfig = "note"
-
 runApp :: IO ()
 runApp = do
     putStrLn "hitting server"
@@ -70,14 +60,14 @@ checklistController = do
                          , crudPut ChecklistServiceConfig
                          ]
 
-crudGet ::NoteService.CRUDEngine crudType a => crudType -> ServerPartT IO Response
+crudGet ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudGet crudConfig = do
     nullDir
     method GET
-    recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ NoteService.crudTypeDenomination crudConfig)
-                (fmap (ok . toResponse . encode) $ NoteService.getItems crudConfig)
+    recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig)
+                (fmap (ok . toResponse . encode) $ getItems crudConfig)
 
-crudPost ::NoteService.CRUDEngine crudType a => crudType -> ServerPartT IO Response
+crudPost ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPost crudConfig = do
     nullDir
     method POST
@@ -89,12 +79,12 @@ crudPost crudConfig = do
             fmap (createNoteContent crudConfig) noteContent `orElse` genericInternalError "Unexpected problem during note creation"
     fmap handleBody body `orElse` ok (toResponse "NoBody")
 
-createNoteContent :: NoteService.CRUDEngine crudType a => crudType -> a -> ServerPartT IO Response
+createNoteContent :: CRUDEngine crudType a => crudType -> a -> ServerPartT IO Response
 createNoteContent crudConfig noteContent = do
     withDefaultIO emptyInternalError
                   (fmap (ok . toResponse .encode) $ NoteService.createItem crudConfig noteContent)
 
-crudDelete :: NoteService.CRUDEngine crudType a => crudType -> ServerPartT IO Response
+crudDelete :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudDelete crudConfig = do
     method DELETE
     path (\pathId -> do
@@ -102,7 +92,7 @@ crudDelete crudConfig = do
         maybeError <- liftIO $ NoteService.deleteItem crudConfig pathId
         fmap toGenericError maybeError `orElse` ok (toResponse ()))
 
-crudPut :: NoteService.CRUDEngine crudType a => crudType -> ServerPartT IO Response
+crudPut :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPut crudConfig = do
     nullDir
     method PUT
@@ -114,7 +104,7 @@ crudPut crudConfig = do
             fmap (handleUpdate crudConfig) noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
     fmap handleBody body `orElse` ok (toResponse "NoBody")
 
-handleUpdate :: NoteService.CRUDEngine crudType a => crudType -> Identifiable a -> ServerPartT IO Response
+handleUpdate :: CRUDEngine crudType a => crudType -> Identifiable a -> ServerPartT IO Response
 handleUpdate crudConfig update =  do
     recoverWith (const.notFound.toResponse $ "Unable to find storage dir")
         (fmap (ok.toResponse.encode) (NoteService.modifyItem crudConfig update))

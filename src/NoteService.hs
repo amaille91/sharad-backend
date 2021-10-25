@@ -1,8 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
  
-module NoteService (DiskFileStorageConfig(..), CRUDEngine(..), Error(..), createItem, getAllItems, deleteItem, modifyItem) where
+module NoteService (createItem, getAllItems, deleteItem, modifyItem) where
 
 import Prelude hiding (id, writeFile, readFile, log)
 import Data.Maybe (fromJust)
@@ -13,6 +11,7 @@ import Control.Monad.Trans.Except (ExceptT, throwE)
 import Control.Monad (mzero)
 import System.Directory (removePathForcibly, createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Model (NoteContent(..), StorageId(..), ChecklistContent(..), Content, hash, Identifiable(..))
+import Crud (DiskFileStorageConfig(..), CRUDEngine(..), Error(..))
 import Data.UUID.V4 (nextRandom)
 import Data.UUID (toString)
 import Data.ByteString.Lazy.Char8 as BL hiding (map, filter, putStrLn, appendFile)
@@ -20,17 +19,6 @@ import Data.Aeson (ToJSON, FromJSON, encode, decode)
 
 -- DATA
 type Id = String
-class DiskFileStorageConfig a where
-    rootPath :: a -> String
-
-data Error = NotFound FilePath | NotCurrentVersion StorageId | FatalError String deriving(Eq, Show)
-
-class (DiskFileStorageConfig crudType, Content a) => CRUDEngine crudType a | crudType -> a where
-  getItems :: crudType -> ExceptT Error IO [a]
-  postItem :: crudType -> a -> MaybeT IO StorageId
-  delItem :: crudType -> String -> IO (Maybe Error)
-  putItem :: crudType -> Identifiable a -> ExceptT Error IO StorageId
-  crudTypeDenomination :: crudType -> String
 
 -- PRIVATE
 -- A fileName with its extension but without its containing directory path (e.g. "26dfc71b-63aa-479d-b1c0-3d90eec1083c.txt")
@@ -42,7 +30,7 @@ createItem config nc = do
     uuid <- liftIO $ fmap toString nextRandom
     liftIO $ writeContentOnDisk config nc uuid
 
-getAllItems :: CRUDEngine crudType a => crudType -> ExceptT Error IO [a]
+getAllItems :: CRUDEngine crudType a => crudType -> ExceptT Error IO [Identifiable a]
 getAllItems config = do
     storageDirExist <- lift $ doesDirectoryExist (rootPath config)
     if not storageDirExist

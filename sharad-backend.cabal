@@ -19,6 +19,8 @@ library
   exposed-modules:
       Lib
       , NoteService
+      , Crud
+      , NoteCrud
   other-modules:
       Paths_sharad_backend
   hs-source-dirs:
