@@ -86,7 +86,12 @@ noteExtension :: String
 noteExtension = ".txt"
 
 prefixWithStorageDir :: DiskFileStorageConfig configType => configType -> String -> String
-prefixWithStorageDir storageConfig s = rootPath storageConfig ++ s
+prefixWithStorageDir storageConfig s = correctedRootPath ++ s
+    where
+        correctedRootPath = postFixWithIfNeeded '/' $ rootPath storageConfig
+        postFixWithIfNeeded c [] = c:[] 
+        postFixWithIfNeeded c (x:[]) = if c == x then c:[] else x:c:[] 
+        postFixWithIfNeeded c (x:xs) = x:postFixWithIfNeeded c xs 
 
 hello = "hello"
 

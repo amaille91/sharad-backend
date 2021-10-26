@@ -4,6 +4,7 @@ module Lib
     ( runApp
     ) where
 
+import Prelude hiding (log)
 import Control.Monad (msum, mzero, join)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Trans.Except (ExceptT, catchE, runExceptT)
@@ -34,7 +35,7 @@ instance CRUDEngine ChecklistServiceConfig ChecklistContent where
     
 runApp :: IO ()
 runApp = do
-    putStrLn "hitting server"
+    putStrLn "running server"
     simpleHTTP nullConf { port = 8081 } $ msum [ noteController
                                                , checklistController
                                                , serveStaticResource
@@ -44,16 +45,17 @@ runApp = do
 
 noteController :: ServerPartT IO Response
 noteController = do
-    lift $ putStrLn "hitting NoteController"
-    dir "note" $ msum [ crudGet NoteServiceConfig
-                      , crudPost NoteServiceConfig
-                      , crudDelete NoteServiceConfig
-                      , crudPut NoteServiceConfig
+    log "hitting NoteController"
+    dir "note" $ msum [ crudGet noteServiceConfig
+                      , crudPost noteServiceConfig
+                      , crudDelete noteServiceConfig
+                      , crudPut noteServiceConfig
                       ]
+    where noteServiceConfig = NoteServiceConfig ".sharad/data/note"
 
 checklistController :: ServerPartT IO Response
 checklistController = do
-  lift $ putStrLn "hitting lift controller"
+  log "hitting checklist controller"
   dir "checklist" $ msum [ crudGet ChecklistServiceConfig
                          , crudPost ChecklistServiceConfig
                          , crudDelete ChecklistServiceConfig
@@ -64,18 +66,28 @@ crudGet ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudGet crudConfig = do
     nullDir
     method GET
+    log "getting content"
     recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig)
-                (fmap (ok . toResponse . encode) $ getItems crudConfig)
+               logAndSendBackItems
+    where
+        items = getItems crudConfig
+        logAndSendBackItems = do
+            items >>= \i -> log ("Retrieved items: " ++ show i)
+            fmap (ok . toResponse . encode) items
 
 crudPost ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPost crudConfig = do
     nullDir
     method POST
+    log "posting content"
     body <- askRq >>= takeRequestBody
     let
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
-            let noteContent = decode $ unBody rqBody :: Content a => Maybe a 
+            let bodyBS = unBody rqBody
+                noteContent = decode $ bodyBS :: Content a => Maybe a 
+            log ("Getting body bytestrings: " ++ show bodyBS)
+            log ("Getting deserialized content: " ++ show noteContent)
             fmap (createNoteContent crudConfig) noteContent `orElse` genericInternalError "Unexpected problem during note creation"
     fmap handleBody body `orElse` ok (toResponse "NoBody")
 
@@ -87,6 +99,7 @@ createNoteContent crudConfig noteContent = do
 crudDelete :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudDelete crudConfig = do
     method DELETE
+    log "deleting content"
     path (\pathId -> do
         nullDir
         maybeError <- liftIO $ NoteService.deleteItem crudConfig pathId
@@ -96,6 +109,7 @@ crudPut :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPut crudConfig = do
     nullDir
     method PUT
+    log "putting content"
     body <- askRq >>= takeRequestBody
     let
         handleBody :: RqBody -> ServerPartT IO Response
@@ -111,7 +125,7 @@ handleUpdate crudConfig update =  do
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do
-    lift $ putStrLn "hitting static resource"
+    log "hitting static resource"
     method GET
     path (\filePath -> do
         lift $ putStrLn ("trying to get resource " ++ filePath)
@@ -140,8 +154,12 @@ withDefaultIO :: (MonadIO m, Monad m) => m a -> MaybeT IO (m a) -> m a
 withDefaultIO = flip orElseIO
 
 genericInternalError :: String -> ServerPartT IO Response
-genericInternalError = internalServerError . toResponse
+genericInternalError s = do
+    lift $ putStrLn ("Internal error: \n\t" ++ s)
+    internalServerError $ toResponse s
 
 emptyInternalError :: ServerPartT IO Response
 emptyInternalError = internalServerError $ toResponse ()
 
+log :: (MonadTrans t) => String -> t IO () 
+log = lift . putStrLn

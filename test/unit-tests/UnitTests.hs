@@ -117,7 +117,7 @@ hasFile :: [FilePath] -> IO Bool
 hasFile dirContent = or <$> mapM doesFileExist dirContent
 
 testDiskConfig :: NoteServiceConfig
-testDiskConfig = NoteServiceConfig
+testDiskConfig = NoteServiceConfig "target/.sharad/data/notes/"
 
 withEmptyDir dirPath _test = do
     exists <- doesDirectoryExist dirPath

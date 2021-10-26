@@ -62,7 +62,7 @@ createNewContent content = do
 assertGetWithContent :: Content a => a -> IO [Identifiable a]
 assertGetWithContent expectedContent = do
   getResponse <- sendRequestWithJSONBody "GET" ()
-  assertWithFoundContent ("Failed to retrieve created content" ++ show expectedContent) [expectedContent] getResponse
+  assertWithFoundContent ("Failed to retrieve created content " ++ show expectedContent) [expectedContent] getResponse
 
 modify :: Content a => Identifiable a -> Expectation
 modify update = do
@@ -80,7 +80,7 @@ deleteItem rootItemPath idToDelete = do
 assertWithFoundContent :: Content a => String -> [a] -> Response [Identifiable a] -> IO [Identifiable a]
 assertWithFoundContent errorPrefix expectedContents response = do
   assertStatusCode200 errorPrefix response
-  assertEqual (errorPrefix ++ "\n\tExpected notes with contents:\n" ++ show expectedContents ++ "\nin response") expectedContents  (map content responseItems)
+  assertEqual (errorPrefix ++ "\n\tExpected notes with contents:\n\t" ++ show expectedContents) expectedContents  (map content responseItems)
   return responseItems
   where
     responseItems = getResponseBody response

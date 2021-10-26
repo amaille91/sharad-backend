@@ -6,15 +6,15 @@ import Crud (DiskFileStorageConfig(..), CRUDEngine(..))
 import Model (NoteContent(..))
 import qualified NoteService as NoteService
 
-data NoteServiceConfig = NoteServiceConfig
+data NoteServiceConfig = NoteServiceConfig String
 
 instance DiskFileStorageConfig NoteServiceConfig where
-    rootPath NoteServiceConfig = ".sharad/data/note"
+    rootPath (NoteServiceConfig path) = path
 
 instance CRUDEngine NoteServiceConfig NoteContent where
   getItems = NoteService.getAllItems
   postItem = NoteService.createItem
   delItem = NoteService.deleteItem
   putItem = NoteService.modifyItem
-  crudTypeDenomination NoteServiceConfig = "note"
+  crudTypeDenomination _ = "note"
 
