@@ -3,6 +3,8 @@ module Lib
     ) where
 
 import Prelude hiding (log)
+import Data.Function ((&))
+import Data.Functor ((<$>))
 import Control.Monad (msum, mzero, join)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Trans.Except (ExceptT, catchE, runExceptT)
@@ -24,30 +26,29 @@ runApp :: IO ()
 runApp = do
     putStrLn "running server"
     simpleHTTP nullConf { port = 8081 } $ do
-        askRq >>= (\rq -> log (show rq))
-        log "=========================END REQUEST===================="
+        askRq >>= log . show >> log "=========================END REQUEST====================\n"
         msum [ noteController
              , checklistController
              , serveStaticResource
              , mzero
              ]
 
-
 noteController :: ServerPartT IO Response
-noteController = do
-    dir "defaultNote" $ msum [ crudGet defaultNoteServiceConfig
-                      , crudPost defaultNoteServiceConfig
-                      , crudDelete defaultNoteServiceConfig
-                      , crudPut defaultNoteServiceConfig
-                      ]
-
+noteController = dir "note" noteHandlers 
+    where
+        noteHandlers = msum $ defaultNoteServiceConfig <%> [ crudGet
+                                                           , crudPost
+                                                           , crudDelete
+                                                           , crudPut
+                                                           ]
 checklistController :: ServerPartT IO Response
-checklistController = do
-  dir "checklist" $ msum [ crudGet defaultChecklistServiceConfig
-                         , crudPost defaultChecklistServiceConfig
-                         , crudDelete defaultChecklistServiceConfig
-                         , crudPut defaultChecklistServiceConfig
-                         ]
+checklistController = dir "checklist" checklistHandlers 
+    where
+        checklistHandlers = msum $ defaultChecklistServiceConfig <%> [ crudGet
+                                                                     , crudPost
+                                                                     , crudDelete
+                                                                     , crudPut
+                                                                     ]
 
 crudGet ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudGet crudConfig = do
@@ -55,7 +56,7 @@ crudGet crudConfig = do
     method GET
     log ("crud GET on " ++ crudTypeDenomination crudConfig)
     recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig)
-               logAndSendBackItems
+                logAndSendBackItems
     where
         items = getItems crudConfig
         logAndSendBackItems = do
@@ -90,14 +91,14 @@ crudDelete crudConfig = do
     path (\pathId -> do
         nullDir
         maybeError <- liftIO $ NoteService.deleteItem crudConfig pathId
-        fmap (handleError pathId) maybeError `orElse` ok (toResponse ()))
+        fmap (handleDeletionError pathId) maybeError `orElse` ok (toResponse ()))
 
-handleError :: String -> Error -> ServerPartT IO Response
-handleError pathId err = do
-    logError pathId err 
+handleDeletionError :: String -> Error -> ServerPartT IO Response
+handleDeletionError pathId err = do
+    logDeletionError pathId err 
     emptyInternalError
 
-logError pathId s = log ("Error while deleting item " ++ pathId ++ ": " ++ show s)
+logDeletionError pathId s = log ("Error while deleting item " ++ pathId ++ ": " ++ show s)
 
 crudPut :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPut crudConfig = do
@@ -113,24 +114,21 @@ crudPut crudConfig = do
             log ("Getting body bytestrings: " ++ show bodyBS)
             log ("Getting deserialized content: " ++ show noteUpdate)
             fmap (handleUpdate crudConfig) noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
-    fmap handleBody body `orElse` ok (toResponse "NoBody")
+    fmap handleBody body `orElse` ok (toResponse "NoBody") -- do not send back ok when there is no body
 
 handleUpdate :: CRUDEngine crudType a => crudType -> Identifiable a -> ServerPartT IO Response
-handleUpdate crudConfig update =  do
+handleUpdate crudConfig update =
     recoverWith (const.notFound.toResponse $ "Unable to find storage dir")
-        (fmap (ok.toResponse.encode) (NoteService.modifyItem crudConfig update))
+                (fmap (ok.toResponse.encode) $ NoteService.modifyItem crudConfig update)
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do
-    log "hitting static resource"
     method GET
+    log "Serving static resource"
     path (\filePath -> do
-        lift $ putStrLn ("trying to get resource " ++ filePath)
+        log ("trying to get resource " ++ filePath)
         nullDir
-        serveFileFrom "static/" (guessContentTypeM mimeTypes) filePath)
-
-toBadRequest :: (Show e) => e -> ServerPartT IO Response
-toBadRequest e = badRequest $ toResponse $ show e
+        serveFileFrom "static/" (guessContentTypeM mimeTypes) filePath) -- check serveFileFrom for filesystem attacks with ..
 
 orElse :: Maybe a -> a -> a
 (Just a) `orElse` _ = a
@@ -152,11 +150,16 @@ withDefaultIO = flip orElseIO
 
 genericInternalError :: String -> ServerPartT IO Response
 genericInternalError s = do
-    lift $ putStrLn ("Internal error: \n\t" ++ s)
-    internalServerError $ toResponse s
+    log ("Internal error: \n\t" ++ s)
+    emptyInternalError 
 
 emptyInternalError :: ServerPartT IO Response
 emptyInternalError = internalServerError $ toResponse ()
 
 log :: (MonadTrans t) => String -> t IO () 
 log = lift . putStrLn
+
+infixr 4 <%>
+
+(<%>) :: Functor f => a -> f (a -> b) -> f b
+a <%> f = (a &) <$> f
