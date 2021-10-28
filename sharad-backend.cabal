@@ -21,6 +21,7 @@ library
       , NoteService
       , Crud
       , NoteCrud
+      , ChecklistCrud
   other-modules:
       Paths_sharad_backend
   hs-source-dirs:

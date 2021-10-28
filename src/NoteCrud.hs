@@ -1,6 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
-module NoteCrud (NoteServiceConfig(..)) where
+module NoteCrud (NoteServiceConfig(..), defaultNoteServiceConfig) where
 
 import Crud (DiskFileStorageConfig(..), CRUDEngine(..))
 import Model (NoteContent(..))
@@ -18,3 +18,4 @@ instance CRUDEngine NoteServiceConfig NoteContent where
   putItem = NoteService.modifyItem
   crudTypeDenomination _ = "note"
 
+defaultNoteServiceConfig = NoteServiceConfig ".sharad/data/note"

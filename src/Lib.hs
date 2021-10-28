@@ -1,5 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-
 module Lib
     ( runApp
     ) where
@@ -19,20 +17,9 @@ import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestB
 import Model (NoteContent, ChecklistContent, Content, Identifiable(..))
 import qualified NoteService as NoteService
 import Crud
-import NoteCrud (NoteServiceConfig(..))
+import NoteCrud (NoteServiceConfig(..), defaultNoteServiceConfig)
+import ChecklistCrud (ChecklistServiceConfig(..), defaultChecklistServiceConfig)
 
-data ChecklistServiceConfig = ChecklistServiceConfig
-
-instance DiskFileStorageConfig ChecklistServiceConfig where
-    rootPath ChecklistServiceConfig = ".sharad/data/checklist"
-
-instance CRUDEngine ChecklistServiceConfig ChecklistContent where
-  getItems = NoteService.getAllItems
-  postItem = NoteService.createItem
-  delItem = NoteService.deleteItem
-  putItem = NoteService.modifyItem
-  crudTypeDenomination ChecklistServiceConfig = "checklist"
-    
 runApp :: IO ()
 runApp = do
     putStrLn "running server"
@@ -48,19 +35,18 @@ runApp = do
 
 noteController :: ServerPartT IO Response
 noteController = do
-    dir "note" $ msum [ crudGet noteServiceConfig
-                      , crudPost noteServiceConfig
-                      , crudDelete noteServiceConfig
-                      , crudPut noteServiceConfig
+    dir "defaultNote" $ msum [ crudGet defaultNoteServiceConfig
+                      , crudPost defaultNoteServiceConfig
+                      , crudDelete defaultNoteServiceConfig
+                      , crudPut defaultNoteServiceConfig
                       ]
-    where noteServiceConfig = NoteServiceConfig ".sharad/data/note"
 
 checklistController :: ServerPartT IO Response
 checklistController = do
-  dir "checklist" $ msum [ crudGet ChecklistServiceConfig
-                         , crudPost ChecklistServiceConfig
-                         , crudDelete ChecklistServiceConfig
-                         , crudPut ChecklistServiceConfig
+  dir "checklist" $ msum [ crudGet defaultChecklistServiceConfig
+                         , crudPost defaultChecklistServiceConfig
+                         , crudDelete defaultChecklistServiceConfig
+                         , crudPut defaultChecklistServiceConfig
                          ]
 
 crudGet ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
