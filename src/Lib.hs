@@ -24,7 +24,7 @@ import NoteCrud (NoteServiceConfig(..))
 data ChecklistServiceConfig = ChecklistServiceConfig
 
 instance DiskFileStorageConfig ChecklistServiceConfig where
-    rootPath ChecklistServiceConfig = ".sharad/data/note"
+    rootPath ChecklistServiceConfig = ".sharad/data/checklist"
 
 instance CRUDEngine ChecklistServiceConfig ChecklistContent where
   getItems = NoteService.getAllItems
@@ -36,16 +36,18 @@ instance CRUDEngine ChecklistServiceConfig ChecklistContent where
 runApp :: IO ()
 runApp = do
     putStrLn "running server"
-    simpleHTTP nullConf { port = 8081 } $ msum [ noteController
-                                               , checklistController
-                                               , serveStaticResource
-                                               , mzero
-                                               ]
+    simpleHTTP nullConf { port = 8081 } $ do
+        askRq >>= (\rq -> log (show rq))
+        log "=========================END REQUEST===================="
+        msum [ noteController
+             , checklistController
+             , serveStaticResource
+             , mzero
+             ]
 
 
 noteController :: ServerPartT IO Response
 noteController = do
-    log "hitting NoteController"
     dir "note" $ msum [ crudGet noteServiceConfig
                       , crudPost noteServiceConfig
                       , crudDelete noteServiceConfig
@@ -55,7 +57,6 @@ noteController = do
 
 checklistController :: ServerPartT IO Response
 checklistController = do
-  log "hitting checklist controller"
   dir "checklist" $ msum [ crudGet ChecklistServiceConfig
                          , crudPost ChecklistServiceConfig
                          , crudDelete ChecklistServiceConfig
@@ -66,7 +67,7 @@ crudGet ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudGet crudConfig = do
     nullDir
     method GET
-    log "getting content"
+    log ("crud GET on " ++ crudTypeDenomination crudConfig)
     recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig)
                logAndSendBackItems
     where
@@ -79,13 +80,13 @@ crudPost ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPost crudConfig = do
     nullDir
     method POST
-    log "posting content"
+    log ("crud POST on " ++ crudTypeDenomination crudConfig)
     body <- askRq >>= takeRequestBody
     let
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
             let bodyBS = unBody rqBody
-                noteContent = decode $ bodyBS :: Content a => Maybe a 
+                noteContent = decode bodyBS :: Content a => Maybe a 
             log ("Getting body bytestrings: " ++ show bodyBS)
             log ("Getting deserialized content: " ++ show noteContent)
             fmap (createNoteContent crudConfig) noteContent `orElse` genericInternalError "Unexpected problem during note creation"
@@ -99,22 +100,32 @@ createNoteContent crudConfig noteContent = do
 crudDelete :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudDelete crudConfig = do
     method DELETE
-    log "deleting content"
+    log ("crud DELETE on " ++ crudTypeDenomination crudConfig)
     path (\pathId -> do
         nullDir
         maybeError <- liftIO $ NoteService.deleteItem crudConfig pathId
-        fmap toGenericError maybeError `orElse` ok (toResponse ()))
+        fmap (handleError pathId) maybeError `orElse` ok (toResponse ()))
+
+handleError :: String -> Error -> ServerPartT IO Response
+handleError pathId err = do
+    logError pathId err 
+    emptyInternalError
+
+logError pathId s = log ("Error while deleting item " ++ pathId ++ ": " ++ show s)
 
 crudPut :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPut crudConfig = do
     nullDir
     method PUT
-    log "putting content"
+    log ("crud PUT on " ++ crudTypeDenomination crudConfig)
     body <- askRq >>= takeRequestBody
     let
         handleBody :: RqBody -> ServerPartT IO Response
         handleBody rqBody = do
-            let noteUpdate = decode $ unBody rqBody
+            let bodyBS = unBody rqBody
+            let noteUpdate = decode bodyBS
+            log ("Getting body bytestrings: " ++ show bodyBS)
+            log ("Getting deserialized content: " ++ show noteUpdate)
             fmap (handleUpdate crudConfig) noteUpdate `orElse` genericInternalError "Unable to parse body as a NoteUpdate"
     fmap handleBody body `orElse` ok (toResponse "NoBody")
 
@@ -132,8 +143,8 @@ serveStaticResource = do
         nullDir
         serveFileFrom "static/" (guessContentTypeM mimeTypes) filePath)
 
-toGenericError :: (Show e) => e -> ServerPartT IO Response
-toGenericError e = badRequest $ toResponse $ show e
+toBadRequest :: (Show e) => e -> ServerPartT IO Response
+toBadRequest e = badRequest $ toResponse $ show e
 
 orElse :: Maybe a -> a -> a
 (Just a) `orElse` _ = a

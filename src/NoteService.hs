@@ -51,11 +51,14 @@ deleteItem config id = runMaybeT $ do
 
 modifyItem :: CRUDEngine crudType a => crudType -> Identifiable a -> ExceptT Error IO StorageId
 modifyItem config (Identifiable requestedStorageId new) = do
+    liftIO $ log ("modifying file with id " ++ show requestedStorageId)
     noteExists <- lift $ doesFileExist $ fileName config (id requestedStorageId)
     if not noteExists
-        then throwE $ NotFound (id requestedStorageId)
+        then do
+            liftIO $ log ("Unable to find file " ++ fileName config (id requestedStorageId))
+            throwE $ NotFound (id requestedStorageId)
         else do
-            Just (Identifiable retrievedStorageId (content :: NoteContent)) <- lift $ readItemInFile config (id requestedStorageId ++ noteExtension)
+            Just (Identifiable retrievedStorageId content) <- lift $ readItemInFile config (id requestedStorageId ++ noteExtension)
             if retrievedStorageId == requestedStorageId
                 then lift $ writeContentOnDisk config new (id requestedStorageId)
                 else throwE $ NotCurrentVersion requestedStorageId
@@ -76,7 +79,7 @@ fromMaybes = map fromJust . filter (/= Nothing)
 fromMaybesM :: (Eq a, Monad m) => [Maybe a] -> m [a]
 fromMaybesM = return . fromMaybes
 
-readItemInFile :: (DiskFileStorageConfig configType, FromJSON a) => configType -> SimpleFileName -> IO (Maybe a)
+readItemInFile :: CRUDEngine configType a => configType -> SimpleFileName -> IO (Maybe (Identifiable a))
 readItemInFile config = fmap decode . readFile . prefixWithStorageDir config
 
 fileName :: DiskFileStorageConfig configType => configType -> Id -> FilePath

@@ -37,7 +37,7 @@ runIntegrationTests = hspec $ do
       [firstNote :: Identifiable NoteContent] <- assertGetWithContent NoteEndpoint firstNoteContent
       modifyItem NoteEndpoint $ Identifiable (storageId firstNote) firstNoteNewContent
       [modifiedNote] <- assertGetWithContent NoteEndpoint firstNoteNewContent
-      deleteItem noteEndpoint $ (id.storageId) modifiedNote
+      deleteItem NoteEndpoint $ (id.storageId) modifiedNote
       assertNoItemAtEndpoint NoteEndpoint
     it "should satisfy the basics, in one session of the Very Firsr User's needs, checklist-wise" $ do
       assertNoItemAtEndpoint ChecklistEndpoint
@@ -45,7 +45,7 @@ runIntegrationTests = hspec $ do
       [firstChecklist :: Identifiable ChecklistContent] <- assertGetWithContent ChecklistEndpoint firstChecklistContent
       modifyItem ChecklistEndpoint $ Identifiable (storageId firstChecklist) firstChecklistNewContent
       [modifiedChecklist :: Identifiable ChecklistContent] <- assertGetWithContent ChecklistEndpoint firstChecklistNewContent
-      deleteItem checklistEndpoint $ (id.storageId) modifiedChecklist
+      deleteItem ChecklistEndpoint $ (id.storageId) modifiedChecklist
         where
         firstChecklistContent    = ChecklistContent { name = "First checklist"
                                                      , items = [ ChecklistItem { label = "First item label unchecked", checked = False }
@@ -78,9 +78,9 @@ modifyItem endpoint update = do
   putResponse :: Response StorageId <- sendRequestWithJSONBodyImpl PUT endpoint update
   assertStatusCode200 ("Failed to apply modification " ++ show update) putResponse
 
-deleteItem :: String -> String -> Expectation
-deleteItem rootItemPath idToDelete = do
-  deleteResponse <- parseRequest ("DELETE http://localhost:8081/" ++ rootItemPath ++ idToDelete) >>= httpBS
+deleteItem :: Endpoint a => a -> String -> Expectation
+deleteItem endpoint idToDelete = do
+  deleteResponse <- parseRequest ("DELETE http://localhost:8081" ++ getEndpoint endpoint ++ "/" ++ idToDelete) >>= httpBS
   assertStatusCode200 ("Failed to delete item" ++ show idToDelete) deleteResponse
 
 assertWithFoundContent :: Content a => String -> [a] -> Response [Identifiable a] -> IO [Identifiable a]
