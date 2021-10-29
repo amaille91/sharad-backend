@@ -5,7 +5,8 @@ module Lib
 import Prelude hiding (log)
 import Data.Function ((&))
 import Data.Functor ((<$>))
-import Control.Monad (msum, mzero, join)
+import Control.Monad (msum, mzero, join, foldM)
+import Control.Monad.Except (catchError)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Trans.Except (ExceptT, catchE, runExceptT)
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
@@ -13,7 +14,7 @@ import Control.Monad.IO.Class (liftIO, MonadIO)
 import Data.Either (either)
 import Control.Concurrent.MVar (takeMVar)
 import qualified Data.ByteString.Lazy.Char8 as BL (unpack)
-import Data.Aeson (decode, encode)
+import Data.Aeson (ToJSON, decode, encode)
 import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestBody, unBody, rqBody, decodeBody, askRq, defaultBodyPolicy, toResponse, nullDir, path, serveFileFrom, guessContentTypeM, mimeTypes, uriRest, nullConf, simpleHTTP, toResponse,  method, ok, badRequest, internalServerError, notFound, dir, Method(GET, POST, DELETE, PUT), Conf(..))
 
 import Model (NoteContent, ChecklistContent, Content, Identifiable(..))
@@ -55,13 +56,24 @@ crudGet crudConfig = do
     nullDir
     method GET
     log ("crud GET on " ++ crudTypeDenomination crudConfig)
-    recoverWith (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig)
-                logAndSendBackItems
-    where
-        items = getItems crudConfig
-        logAndSendBackItems = do
-            items >>= \i -> log ("Retrieved items: " ++ show i)
-            fmap (ok . toResponse . encode) items
+    recover (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig) (successResponse . handlePotentialParsingErrors) $ getItems crudConfig
+
+successResponse :: ToJSON a => IO a -> ServerPartT IO Response
+successResponse action = do
+    a <- liftIO action
+    (ok . toResponse . encode) a
+
+handlePotentialParsingErrors :: [ExceptT CrudReadException IO (Identifiable a)] -> IO [Identifiable a] 
+handlePotentialParsingErrors parsingTries = foldM accumulateSuccessOrLogError [] parsingTries
+
+accumulateSuccessOrLogError :: [Identifiable a] -> ExceptT CrudReadException IO (Identifiable a) -> IO [Identifiable a]
+accumulateSuccessOrLogError acc parsingResult = do
+    parsingTry <- runExceptT parsingResult
+    case parsingTry of
+        Left e -> do
+            log ("Unexpected parsing exception: " ++ show e)
+            return acc
+        Right succ -> return (succ:acc)
 
 crudPost ::CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudPost crudConfig = do
@@ -81,8 +93,12 @@ crudPost crudConfig = do
 
 createNoteContent :: CRUDEngine crudType a => crudType -> a -> ServerPartT IO Response
 createNoteContent crudConfig noteContent = do
-    withDefaultIO emptyInternalError
-                  (fmap (ok . toResponse .encode) $ NoteService.createItem crudConfig noteContent)
+    recover (logThenGenericInternalError crudConfig) (ok . toResponse .encode) $ NoteService.createItem crudConfig noteContent
+
+logThenGenericInternalError :: (Show e, CRUDEngine crudType a) => crudType -> e -> ServerPartT IO Response
+logThenGenericInternalError crudConfig e = do
+    log ("Unexpected error during creation of " ++ crudTypeDenomination crudConfig ++ ": " ++ show e)
+    emptyInternalError
 
 crudDelete :: CRUDEngine crudType a => crudType -> ServerPartT IO Response
 crudDelete crudConfig = do
@@ -90,13 +106,12 @@ crudDelete crudConfig = do
     log ("crud DELETE on " ++ crudTypeDenomination crudConfig)
     path (\pathId -> do
         nullDir
-        maybeError <- liftIO $ NoteService.deleteItem crudConfig pathId
-        fmap (handleDeletionError pathId) maybeError `orElse` ok (toResponse ()))
+        recover (handleDeletionError pathId) (\() -> ok (toResponse ())) $ NoteService.deleteItem crudConfig pathId)
 
-handleDeletionError :: String -> Error -> ServerPartT IO Response
+handleDeletionError :: String -> CrudWriteException -> ServerPartT IO Response
 handleDeletionError pathId err = do
     logDeletionError pathId err 
-    emptyInternalError
+    notFound $ toResponse ()
 
 logDeletionError pathId s = log ("Error while deleting item " ++ pathId ++ ": " ++ show s)
 
@@ -148,6 +163,11 @@ orElseIO maybe alt = do
 withDefaultIO :: (MonadIO m, Monad m) => m a -> MaybeT IO (m a) -> m a
 withDefaultIO = flip orElseIO
 
+recover :: (e -> ServerPartT IO Response) -> (b -> ServerPartT IO Response) -> ExceptT e IO b -> ServerPartT IO Response
+recover errorHandler successHandler errorMonad = do
+    errorOrNot <- lift $ runExceptT errorMonad
+    either errorHandler successHandler errorOrNot
+
 genericInternalError :: String -> ServerPartT IO Response
 genericInternalError s = do
     log ("Internal error: \n\t" ++ s)
@@ -156,8 +176,8 @@ genericInternalError s = do
 emptyInternalError :: ServerPartT IO Response
 emptyInternalError = internalServerError $ toResponse ()
 
-log :: (MonadTrans t) => String -> t IO () 
-log = lift . putStrLn
+log :: MonadIO m => String -> m () 
+log = liftIO . putStrLn
 
 infixr 4 <%>
 
