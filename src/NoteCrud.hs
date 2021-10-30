@@ -2,8 +2,8 @@
 
 module NoteCrud (NoteServiceConfig(..), defaultNoteServiceConfig) where
 
-import Crud (DiskFileStorageConfig(..), CRUDEngine(..))
-import Model (NoteContent(..))
+import           Crud        (CRUDEngine (..), DiskFileStorageConfig (..))
+import           Model       (NoteContent (..))
 import qualified NoteService as NoteService
 
 data NoteServiceConfig = NoteServiceConfig String

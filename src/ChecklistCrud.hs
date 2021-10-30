@@ -2,8 +2,8 @@
 
 module ChecklistCrud (ChecklistServiceConfig(..), defaultChecklistServiceConfig) where
 
-import Crud (DiskFileStorageConfig(..), CRUDEngine(..))
-import Model (ChecklistContent(..))
+import           Crud        (CRUDEngine (..), DiskFileStorageConfig (..))
+import           Model       (ChecklistContent (..))
 import qualified NoteService as NoteService
 
 data ChecklistServiceConfig = ChecklistServiceConfig String
@@ -18,4 +18,4 @@ instance CRUDEngine ChecklistServiceConfig ChecklistContent where
   putItem = NoteService.modifyItem
   crudTypeDenomination _ = "checklist"
 
-defaultChecklistServiceConfig = ChecklistServiceConfig ".sharad/data/chekclist"
+defaultChecklistServiceConfig = ChecklistServiceConfig ".sharad/data/checklist"
