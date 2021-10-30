@@ -56,7 +56,7 @@ crudGet crudConfig = do
     nullDir
     method GET
     log ("crud GET on " ++ crudTypeDenomination crudConfig)
-    recover (const $ genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig) (successResponse . handlePotentialParsingErrors) $ getItems crudConfig
+    recover (\err -> genericInternalError $ "Unexpected problem during retrieving all " ++ crudTypeDenomination crudConfig ++ "s:\n\t" ++ show err) (successResponse . handlePotentialParsingErrors) $ getItems crudConfig
 
 successResponse :: ToJSON a => IO a -> ServerPartT IO Response
 successResponse action = do

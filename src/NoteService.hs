@@ -29,17 +29,22 @@ type SimpleFileName = String
 -- FUNCTIONS
 createItem :: CRUDEngine crudConfig a => crudConfig -> a -> ExceptT CrudWriteException IO StorageId
 createItem config nc = do
+    ioErrorToExceptT (createDirectoryIfMissing True (rootPath config))
+            (IOWriteException)
     uuid <- liftIO $ fmap UUID.toString UUID.nextRandom
     writeContentToFile config nc uuid
 
 getAllItems :: CRUDEngine crudConfig a => crudConfig -> ExceptT CrudReadException IO [ExceptT CrudReadException IO (Identifiable a)]
 getAllItems config = do
-    simpleFileNames <- catchIO (listDirectory (rootPath config))
+    liftIO $ catch (createDirectoryIfMissing True (rootPath config))
+                   (\(e :: IOError) -> return ())
+
+    simpleFileNames <- ioErrorToExceptT (listDirectory (rootPath config))
                                (IOReadException)
     return $ fmap (readItemFromFile config) simpleFileNames
 
 deleteItem :: DiskFileStorageConfig confType => confType -> String -> ExceptT CrudWriteException IO ()
-deleteItem config id = catchIO (removePathForcibly $ fileName config id) (IOWriteException)
+deleteItem config id = ioErrorToExceptT (removePathForcibly $ fileName config id) (IOWriteException)
 
 modifyItem :: CRUDEngine crudConfig a => crudConfig -> Identifiable a -> ExceptT CrudModificationException IO StorageId
 modifyItem config (Identifiable targetStorageId new) = do
@@ -53,9 +58,7 @@ modifyItem config (Identifiable targetStorageId new) = do
 writeContentToFile :: CRUDEngine crudConfig a => crudConfig -> a -> String -> ExceptT CrudWriteException IO StorageId
 writeContentToFile storageConfig content fileId = do
     let storeId = StorageId { id = fileId, version = hash content }
-    catchIO (createDirectoryIfMissing True (rootPath storageConfig))
-            (IOWriteException)
-    catchIO (writeFile (fileName storageConfig fileId) (encode $ (Identifiable storeId content)))
+    ioErrorToExceptT (writeFile (fileName storageConfig fileId) (encode $ (Identifiable storeId content)))
             (IOWriteException)
     return storeId
 
@@ -81,7 +84,7 @@ parsingExceptionToCrudException file (ParsingException parsedString errorMessage
     CrudParsingException parsedString errorMessage file
 
 readFileImpl :: FilePath -> ExceptT CrudReadException IO ByteString
-readFileImpl file = catchIO (readFile file)
+readFileImpl file = ioErrorToExceptT (readFile file)
                             (IOReadException)
 
 fileName :: DiskFileStorageConfig crudConfig => crudConfig -> Id -> FilePath
@@ -100,6 +103,6 @@ prefixWithStorageDir storageConfig s = postFixWithIfNeeded '/' (rootPath storage
 log :: MonadIO m => String -> m ()
 log s = liftIO $ appendFile  "./server.log" $ s ++ "\n"
 
-catchIO :: IO b -> (IOError -> a) -> ExceptT a IO b
-catchIO action errorHandler = ExceptT $ catch (fmap Right $ action)
+ioErrorToExceptT :: IO b -> (IOError -> a) -> ExceptT a IO b
+ioErrorToExceptT action errorHandler = ExceptT $ catch (fmap Right $ action)
                                               (return . Left . errorHandler)

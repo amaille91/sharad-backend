@@ -2,13 +2,13 @@ module UnitTests (runUnitTests) where
 
 import Prelude hiding(id)
 import Test.HUnit.Lang
-import Test.HUnit.Base(Counts(..), (@?), (~:), test)
+import Test.HUnit.Base(Counts(..), (@?), (~:), test, assertBool, assertFailure)
 import Test.HUnit.Text (runTestTT)
-import Crud (CRUDEngine(..), DiskFileStorageConfig(..), Error(..))
-import NoteService (getAllItems, createItem, deleteItem, modifyItem)
+import Crud (CRUDEngine(..), DiskFileStorageConfig(..), Error(..), CrudModificationException(..), CrudReadException(..), CrudWriteException(..))
 import Model (Identifiable(..), NoteContent(..), StorageId(..)) 
 import System.Directory (removeDirectoryRecursive, createDirectory,doesDirectoryExist, doesFileExist, listDirectory)
-import Data.Maybe (fromJust, isJust)
+import Data.Maybe (fromJust)
+import Data.Either (isRight)
 import Data.List ((\\))
 import Control.Monad.Trans.Maybe (MaybeT, runMaybeT)
 import Control.Monad.Trans.Except (runExceptT)
@@ -34,61 +34,78 @@ noteServiceTests = test [ "Creating a note should create a new file in storage d
                         , "Modifying an existing note but with wrong current version should give back a NotCurrentVersion error" ~: withEmptyNoteDir modifyWrongCurrentVersion
                         ]
 
-noteDirPath = "target/.sharad/data/notes/"
+noteDirPath = "target/.sharad/data/note/"
 
+withEmptyNoteDir :: IO () -> IO ()
 withEmptyNoteDir = withEmptyDir noteDirPath
 
+createNoteTest :: IO ()
 createNoteTest = do
-    Just storageId <- runMaybeT $ createItem testDiskConfig noteExample
-    dirContent <- retriveContentInDir noteDirPath
+    Right storageId <- runExceptT $ postItem testDiskConfig noteExample
+    dirContent <- retrieveContentInDir noteDirPath
     noteFilePathFromId storageId `elem` dirContent @? "expected " ++ show dirContent ++ " to contain " ++ show (id storageId ++ ".txt")
     where
         noteExample = NoteContent { title = Just "ExampleNoteTitle", noteContent = "Arbitrary note content" }
 
+getEmptyDirTest :: IO ()
 getEmptyDirTest = withEmptyNoteDir $ do
-    Right notes <- runExceptT $ getAllItems testDiskConfig
-    assertEqual ("Expected [] but got " ++ show notes) [] notes
+    Right []  <- runExceptT $ getItems testDiskConfig
+    return ()
 
 createManyThenGetTest = do
-    maybecreationIds <- mapM (runMaybeT . createItem testDiskConfig) noteExamples
-    let creationIds = map fromJust maybecreationIds
-    Right notes <- runExceptT $ getAllItems testDiskConfig
+    maybecreationIds <- mapM (runExceptT . postItem testDiskConfig) noteExamples
+    let creationIds = map fromRight maybecreationIds
+    Right potentialNotes <- runExceptT $ getItems testDiskConfig
+    notes <- sequence $ map (fmap fromRight . runExceptT) potentialNotes
     assertEqual "Their should be one note retrieved" (length creationIds) (length notes)
     assertEqualWithoutOrder "RetrievedNote should have the same id as the created note" creationIds (map storageId notes)
     assertEqualWithoutOrder "RetrievedNote should have the same content as the created note" noteExamples (map content notes)
     where noteExamples = [ NoteContent { title = Just ("ExampleNoteTitle " ++ show int), noteContent = "Arbitrary note content " ++ show int } | int <- [1..5] ]
 
+createManyThenDeleteAllTest :: IO ()
 createManyThenDeleteAllTest = do
-    maybecreationIds <- mapM (runMaybeT . createItem testDiskConfig) noteExamples
-    let noteIds = map (id . fromJust) maybecreationIds
-    results <- mapM (deleteItem testDiskConfig) noteIds
-    assertBool "all deletions should be a success" (not (any isJust results))
-    dirContent <- retriveContentInDir noteDirPath
+    eitherCreationIds <- mapM (runExceptT . postItem testDiskConfig) noteExamples
+    let noteIds = map (id . fromRight) eitherCreationIds
+    results <- mapM (runExceptT . delItem testDiskConfig) noteIds
+    assertBool "all deletions should be a success" (all isRight results)
+    dirContent <- retrieveContentInDir noteDirPath
     assertEqual "note storage should be empty" [] dirContent
-    where noteExamples = [ NoteContent { title = Just ("ExampleNoteTitle " ++ show int), noteContent = "Arbitrary note content " ++ show int } | int <- [1..5] ]
+    where 
+        noteExamples = [ NoteContent { title = Just ("ExampleNoteTitle " ++ show int), noteContent = "Arbitrary note content " ++ show int } | int <- [1..5] ]
 
+
+fromRight (Right a) = a
+fromRight (Left _) = undefined
+
+deleteNoteOnEmptyDir :: IO ()
 deleteNoteOnEmptyDir = withEmptyNoteDir $ do
-    Just toto <- deleteItem testDiskConfig "ArbitraryNoteId"
-    assertEqual "The note should not be found" (NotFound "ArbitraryNoteId") toto
+    Right () <- runExceptT $ delItem testDiskConfig "ArbitraryNoteId"
+    return ()
 
+modifyAnExistingNote :: IO ()
 modifyAnExistingNote = do
-    Just creationId <- runMaybeT $ createItem testDiskConfig noteExample
-    Right newcreationId <- runExceptT $ modifyItem testDiskConfig (arbitraryNoteUpdate creationId)
+    Right creationId <- runExceptT $ postItem testDiskConfig noteExample
+    Right newcreationId <- runExceptT $ putItem testDiskConfig (arbitraryNoteUpdate creationId)
     assertEqual "Updated note id should be the same as original note" (id creationId) (id newcreationId)
     assertNotEqual "Updated note version should be different from original note's version" (version creationId) (version newcreationId)
     where
         noteExample = NoteContent { title = Just "ExampleNoteTitle", noteContent = "Arbitrary note content" }
         arbitraryNoteUpdate creationId = Identifiable creationId (NoteContent { title = Just "ModifiedNoteTitle", noteContent = "Modified content too"})
 
+modifyANonExistingNote :: IO ()
 modifyANonExistingNote = do
-    Left error <- runExceptT $ modifyItem testDiskConfig arbitraryNoteUpdate
-    assertEqual "Error should be a NotFound of the requested id" (NotFound "id") error
+    Left error <- runExceptT $ putItem testDiskConfig arbitraryNoteUpdate
+    assertIsAReadingException "Error should be a NotFound of the requested id" error
     where
         arbitraryNoteUpdate = Identifiable StorageId { id = "id", version = "" } (NoteContent { title = Just "ModifiedNoteTitle", noteContent = "Modified content too"})
+        assertIsAReadingException s err = case err of
+            CrudModificationReadingException (IOReadException _) -> assertBool s True
+            _                                                    -> assertBool s False
 
+modifyWrongCurrentVersion :: IO ()
 modifyWrongCurrentVersion = do
-    Just creationId <- runMaybeT $ createItem testDiskConfig noteExample
-    Left error <- runExceptT $ modifyItem testDiskConfig (wrongVersionNoteUpdate creationId)
+    Right creationId <- runExceptT $ postItem testDiskConfig noteExample
+    Left error <- runExceptT $ putItem testDiskConfig (wrongVersionNoteUpdate creationId)
     assertEqual "Error should be a WrongVersion of the storageId requested" (NotCurrentVersion $ wrongVersionStorageId creationId) error
     where
         noteExample = NoteContent { title = Just "ExampleNoteTitle", noteContent = "Arbitrary note content" }
@@ -97,28 +114,25 @@ modifyWrongCurrentVersion = do
         wrongVersionNoteUpdate creationStorageId =
             Identifiable (wrongVersionStorageId creationStorageId) (NoteContent { title = Just "ModifiedNoteTitle", noteContent = "Modified content too"})
 
+assertEqualWithoutOrder :: (Show a, Eq a) => String -> [a] -> [a] -> IO ()
 assertEqualWithoutOrder s as bs = do
     assertBool (s ++ "\n\t" ++ show as ++ " should be equal in " ++ show bs) (null (as \\ bs))
     assertBool (s ++ "\n\t" ++ show bs ++ " should be equal in " ++ show as) (null (bs \\ as))
 
 assertNotEqual s a b = assertBool s (a /= b)
 
-assertBool s = assertEqual s True
-
 noteFilePathFromId :: StorageId -> String
 noteFilePathFromId storageId = noteDirPath ++ id storageId ++ ".txt"
 
-retriveContentInDir :: FilePath -> IO [FilePath]
-retriveContentInDir dirPath = do
+retrieveContentInDir :: FilePath -> IO [FilePath]
+retrieveContentInDir dirPath = do
     dirFileNames <- listDirectory dirPath
     return $ map (dirPath ++) dirFileNames
 
-hasFile :: [FilePath] -> IO Bool
-hasFile dirContent = or <$> mapM doesFileExist dirContent
-
 testDiskConfig :: NoteServiceConfig
-testDiskConfig = NoteServiceConfig "target/.sharad/data/notes/"
+testDiskConfig = NoteServiceConfig "target/.sharad/data/note/"
 
+withEmptyDir :: FilePath -> IO () -> IO ()
 withEmptyDir dirPath _test = do
     exists <- doesDirectoryExist dirPath
     if exists

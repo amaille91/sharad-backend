@@ -23,11 +23,11 @@ data Error = FatalError String deriving(Eq, Show)
 type ErrorMessage = String
 type ParsedString = ByteString
 
-data CrudReadException = IOReadException IOError | CrudParsingException ParsedString ErrorMessage FilePath deriving (Show)
+data CrudReadException = IOReadException IOError | CrudParsingException ParsedString ErrorMessage FilePath deriving (Show, Eq)
 
-data CrudWriteException = IOWriteException IOError deriving (Show)
+data CrudWriteException = IOWriteException IOError deriving (Show, Eq)
 
-data CrudModificationException = CrudModificationReadingException CrudReadException | CrudModificationWritingException CrudWriteException | NotCurrentVersion StorageId
+data CrudModificationException = CrudModificationReadingException CrudReadException | CrudModificationWritingException CrudWriteException | NotCurrentVersion StorageId deriving (Show, Eq)
 
 class FromCrudReadException a where
    fromCrudReadException :: CrudReadException -> a
