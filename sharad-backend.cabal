@@ -28,7 +28,7 @@ library
       src
   build-depends:
       base >=4.7 && <5
-    , sharad-model
+    , sharad-common
     , happstack-server
     , bytestring
     , aeson
@@ -63,7 +63,7 @@ test-suite sharad-unit-tests
   build-depends:
       base >=4.7 && <5
     , sharad-backend
-    , sharad-model
+    , sharad-common
     , HUnit ==1.6.0.0
     , directory
     , transformers
@@ -86,5 +86,5 @@ test-suite sharad-integration-tests
     , aeson
     , bytestring
     , utf8-string
-    , sharad-model
+    , sharad-common
   default-language: Haskell2010
