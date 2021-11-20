@@ -4,12 +4,11 @@ module NoteService (createItem, getAllItems, deleteItem, modifyItem) where
 
 import           Control.Exception          (catch)
 import           Control.Monad              (mzero)
-import           Control.Monad.Except       (ExceptT (..), catchError,
-                                             mapExceptT, throwError,
-                                             withExceptT)
+import           Control.Monad.Error.Class  (throwError)
 import           Control.Monad.IO.Class     (MonadIO, liftIO)
 import           Control.Monad.Trans.Class  (lift)
 import           Control.Monad.Trans.Maybe  (MaybeT, runMaybeT)
+import           Control.Monad.Trans.Either (EitherT, newEitherT, firstEitherT, handleEitherT)
 import           Crud                       (CRUDEngine (..),
                                              CrudModificationException (..),
                                              CrudReadException (..),
@@ -42,52 +41,52 @@ type Id = String
 type SimpleFileName = String
 
 -- FUNCTIONS
-createItem :: CRUDEngine crudConfig a => crudConfig -> a -> ExceptT CrudWriteException IO StorageId
+createItem :: CRUDEngine crudConfig a => crudConfig -> a -> EitherT CrudWriteException IO StorageId
 createItem config nc = do
-    ioErrorToExceptT (createDirectoryIfMissing True (rootPath config))
-            (IOWriteException)
+    handleEitherT (IOWriteException)
+                  (createDirectoryIfMissing True (rootPath config))
     uuid <- liftIO $ fmap UUID.toString UUID.nextRandom
     writeContentToFile config nc uuid
 
-getAllItems :: CRUDEngine crudConfig a => crudConfig -> ExceptT CrudReadException IO [ExceptT CrudReadException IO (Identifiable a)]
+getAllItems :: CRUDEngine crudConfig a => crudConfig -> EitherT CrudReadException IO [EitherT CrudReadException IO (Identifiable a)]
 getAllItems config = do
     liftIO $ catch (createDirectoryIfMissing True (rootPath config))
                    (\(e :: IOError) -> return ())
 
-    simpleFileNames <- ioErrorToExceptT (listDirectory (rootPath config))
-                               (IOReadException)
+    simpleFileNames <- handleEitherT (IOReadException)
+                                     (listDirectory (rootPath config))
     return $ fmap (readItemFromFile config) simpleFileNames
 
-deleteItem :: DiskFileStorageConfig confType => confType -> String -> ExceptT CrudWriteException IO ()
-deleteItem config id = ioErrorToExceptT (removePathForcibly $ fileName config id) (IOWriteException)
+deleteItem :: DiskFileStorageConfig confType => confType -> String -> EitherT CrudWriteException IO ()
+deleteItem config id = handleEitherT IOWriteException (removePathForcibly $ fileName config id)
 
-modifyItem :: CRUDEngine crudConfig a => crudConfig -> Identifiable a -> ExceptT CrudModificationException IO StorageId
+modifyItem :: CRUDEngine crudConfig a => crudConfig -> Identifiable a -> EitherT CrudModificationException IO StorageId
 modifyItem config (Identifiable targetStorageId new) = do
     liftIO $ log ("modifying file with id " ++ show targetStorageId)
-    (Identifiable retrievedStorageId content) <- withExceptT fromCrudReadException $ readItemFromFile config (id targetStorageId ++ txtExtension)
+    (Identifiable retrievedStorageId content) <- firstEitherT fromCrudReadException $ readItemFromFile config (id targetStorageId ++ txtExtension)
     if retrievedStorageId == targetStorageId
-        then withExceptT fromCrudWriteException $ writeContentToFile config new (id targetStorageId)
+        then firstEitherT fromCrudWriteException $ writeContentToFile config new (id targetStorageId)
         else throwError $ NotCurrentVersion targetStorageId
 
 
-writeContentToFile :: CRUDEngine crudConfig a => crudConfig -> a -> String -> ExceptT CrudWriteException IO StorageId
+writeContentToFile :: CRUDEngine crudConfig a => crudConfig -> a -> String -> EitherT CrudWriteException IO StorageId
 writeContentToFile storageConfig content fileId = do
     let storeId = StorageId { id = fileId, version = hash content }
-    ioErrorToExceptT (writeFile (fileName storageConfig fileId) (encode $ (Identifiable storeId content)))
-            (IOWriteException)
+    handleEitherT IOWriteException
+                  (writeFile (fileName storageConfig fileId) (encode $ (Identifiable storeId content)))
     return storeId
 
 fromMaybes :: (Eq a) => [Maybe a] -> [a]
 fromMaybes = map fromJust . filter (/= Nothing)
 
-readItemFromFile :: CRUDEngine crudConfig a => crudConfig -> SimpleFileName -> ExceptT CrudReadException IO (Identifiable a)
+readItemFromFile :: CRUDEngine crudConfig a => crudConfig -> SimpleFileName -> EitherT CrudReadException IO (Identifiable a)
 readItemFromFile config file = do
     stringToParse <- (readFileImpl . prefixWithStorageDir config) file
-    withExceptT (parsingExceptionToCrudException file) $ parseString config stringToParse
+    firstEitherT (parsingExceptionToCrudException file) $ parseString config stringToParse
 
-parseString :: CRUDEngine crudConfig a => crudConfig -> ByteString -> ExceptT ParsingException IO (Identifiable a)
-parseString config strToParse = withExceptT (ParsingException strToParse)
-                                            (ExceptT $ eitherDecodeM strToParse)
+parseString :: CRUDEngine crudConfig a => crudConfig -> ByteString -> EitherT ParsingException IO (Identifiable a)
+parseString config strToParse = firstEitherT (ParsingException strToParse)
+                                            (newEitherT $ eitherDecodeM strToParse)
     where eitherDecodeM = return . eitherDecode
 
 data ParsingException = ParsingException ParsedString ErrorMessage
@@ -98,9 +97,10 @@ parsingExceptionToCrudException :: FilePath -> ParsingException -> CrudReadExcep
 parsingExceptionToCrudException file (ParsingException parsedString errorMessage) =
     CrudParsingException parsedString errorMessage file
 
-readFileImpl :: FilePath -> ExceptT CrudReadException IO ByteString
-readFileImpl file = ioErrorToExceptT (readFile file)
-                            (IOReadException)
+readFileImpl :: FilePath -> EitherT CrudReadException IO ByteString
+readFileImpl file = handleEitherT IOReadException
+                                  (readFile file)
+                            
 
 fileName :: DiskFileStorageConfig crudConfig => crudConfig -> Id -> FilePath
 fileName storageConfig id = prefixWithStorageDir storageConfig id ++ txtExtension
@@ -118,6 +118,3 @@ prefixWithStorageDir storageConfig s = postFixWithIfNeeded '/' (rootPath storage
 log :: MonadIO m => String -> m ()
 log s = liftIO $ appendFile  "./server.log" $ s ++ "\n"
 
-ioErrorToExceptT :: IO b -> (IOError -> a) -> ExceptT a IO b
-ioErrorToExceptT action errorHandler = ExceptT $ catch (fmap Right $ action)
-                                              (return . Left . errorHandler)

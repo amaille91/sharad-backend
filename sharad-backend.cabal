@@ -1,7 +1,7 @@
 cabal-version: 2.4
 
 name:           sharad-backend
-version:        0.1.0.0
+version:        0.2.0.0
 description:
 homepage:
 bug-reports:
@@ -36,6 +36,7 @@ library
     , binary
     , directory
     , transformers
+    , transformers-either
     , mtl
   default-language: Haskell2010
 
