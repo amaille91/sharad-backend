@@ -4,7 +4,7 @@ module NoteCrud (NoteServiceConfig(..), defaultNoteServiceConfig) where
 
 import           Crud        (CRUDEngine (..), DiskFileStorageConfig (..))
 import           Model       (NoteContent (..))
-import qualified NoteService as NoteService
+import qualified CrudStorage as CrudStorage
 
 data NoteServiceConfig = NoteServiceConfig String
 
@@ -12,10 +12,10 @@ instance DiskFileStorageConfig NoteServiceConfig where
     rootPath (NoteServiceConfig path) = path
 
 instance CRUDEngine NoteServiceConfig NoteContent where
-  getItems = NoteService.getAllItems
-  postItem = NoteService.createItem
-  delItem = NoteService.deleteItem
-  putItem = NoteService.modifyItem
+  getItems = CrudStorage.getAllItems
+  postItem = CrudStorage.createItem
+  delItem = CrudStorage.deleteItem
+  putItem = CrudStorage.modifyItem
   crudTypeDenomination _ = "note"
 
 defaultNoteServiceConfig = NoteServiceConfig ".sharad/data/note"

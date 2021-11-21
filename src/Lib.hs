@@ -18,7 +18,7 @@ import Data.Aeson (ToJSON, decode, encode)
 import Happstack.Server (Response, ServerPartT, BodyPolicy, RqBody, takeRequestBody, unBody, rqBody, decodeBody, askRq, defaultBodyPolicy, toResponse, nullDir, path, serveFileFrom, guessContentTypeM, mimeTypes, uriRest, nullConf, simpleHTTP, toResponse,  method, ok, badRequest, internalServerError, notFound, dir, Method(GET, POST, DELETE, PUT), Conf(..))
 
 import Model (NoteContent, ChecklistContent, Content, Identifiable(..))
-import qualified NoteService as NoteService
+import qualified CrudStorage as CrudStorage
 import Crud
 import NoteCrud (NoteServiceConfig(..), defaultNoteServiceConfig)
 import ChecklistCrud (ChecklistServiceConfig(..), defaultChecklistServiceConfig)
@@ -93,7 +93,7 @@ crudPost crudConfig = do
 
 createNoteContent :: CRUDEngine crudType a => crudType -> a -> ServerPartT IO Response
 createNoteContent crudConfig noteContent = do
-    recover (logThenGenericInternalError crudConfig) (ok . toResponse .encode) $ NoteService.createItem crudConfig noteContent
+    recover (logThenGenericInternalError crudConfig) (ok . toResponse .encode) $ CrudStorage.createItem crudConfig noteContent
 
 logThenGenericInternalError :: (Show e, CRUDEngine crudType a) => crudType -> e -> ServerPartT IO Response
 logThenGenericInternalError crudConfig e = do
@@ -106,7 +106,7 @@ crudDelete crudConfig = do
     log ("crud DELETE on " ++ crudTypeDenomination crudConfig)
     path (\pathId -> do
         nullDir
-        recover (handleDeletionError pathId) (\() -> ok (toResponse ())) $ NoteService.deleteItem crudConfig pathId)
+        recover (handleDeletionError pathId) (\() -> ok (toResponse ())) $ CrudStorage.deleteItem crudConfig pathId)
 
 handleDeletionError :: String -> CrudWriteException -> ServerPartT IO Response
 handleDeletionError pathId err = do
@@ -134,7 +134,7 @@ crudPut crudConfig = do
 handleUpdate :: CRUDEngine crudType a => crudType -> Identifiable a -> ServerPartT IO Response
 handleUpdate crudConfig update =
     recoverWith (const.notFound.toResponse $ "Unable to find storage dir")
-                (fmap (ok.toResponse.encode) $ NoteService.modifyItem crudConfig update)
+                (fmap (ok.toResponse.encode) $ CrudStorage.modifyItem crudConfig update)
 
 serveStaticResource :: ServerPartT IO Response
 serveStaticResource = do
